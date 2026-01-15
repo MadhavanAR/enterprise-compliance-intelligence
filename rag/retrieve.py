@@ -3,6 +3,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import SparseVector
 from rag.embeddings import embed_texts
 from rag.store import COLLECTION_NAME
+from rag.rerank import rerank
 
 client = QdrantClient(url="http://localhost:6333")
 
@@ -50,12 +51,19 @@ def search(query: str, top_k: int = 5):
                 "text": r.payload["text"],
             }
 
-    ranked = sorted(merged.values(), key=lambda x: x["score"], reverse=True)
+    ranked = sorted(
+        merged.values(),
+        key=lambda x: x["score"],
+        reverse=True
+    )
+
+    docs = [r["text"] for r in ranked[:top_k]]
+    reranked_docs = rerank(query, docs, top_k=top_k)
 
     print(f"\nQuery: {query}\n")
-    for i, r in enumerate(ranked[:top_k]):
-        print(f"--- Result {i+1} ---")
-        print(r["text"][:300])
+    for i, text in enumerate(reranked_docs, 1):
+        print(f"--- FINAL {i} ---")
+        print(text[:300])
         print()
 
 if __name__ == "__main__":
