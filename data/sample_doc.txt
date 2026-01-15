@@ -11,7 +11,7 @@ Chunking strategy plays a critical role in retrieval quality. Large chunks may d
 
 Embedding models convert text into vectors. The choice of embedding model directly impacts semantic search quality. Newer embedding models support variable-length embeddings, allowing teams to trade off cost and accuracy.
 
-Hybrid retrieval combines dense vector search with sparse keyword-based search such as BM25. Dense search captures semantic meaning, while sparse search ensures exact keyword matches.
+Hybrid retrieval combines dense vector search with sparse keyword-based search such as BM25. BM25 (Best Matching 25) is a probabilistic ranking function based on term frequency (TF), inverse document frequency (IDF), and document length normalization. Dense search captures semantic meaning, while sparse search ensures exact keyword matches.
 
 Reranking is used as a second-stage filter. Retrieved documents are passed through a reranker model, which orders them by relevance to the query. This step significantly reduces hallucinations.
 

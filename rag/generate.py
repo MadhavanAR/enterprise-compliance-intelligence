@@ -7,6 +7,7 @@ MODEL = "llama3.2:latest"
 SYSTEM_PROMPT = """You are a RAG assistant.
 Answer ONLY from the given context.
 If the answer is not in the context, say "I don't know".
+Do not expand acronyms unless explicitly defined in the context.
 """
 
 def generate_answer(question: str, context: list[str]) -> str:
