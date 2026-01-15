@@ -1,0 +1,20 @@
+Title: Retrieval-Augmented Generation Best Practices
+
+Author: Internal AI Platform Team
+Date: 2024-11-10
+
+Retrieval-Augmented Generation (RAG) systems combine information retrieval with large language models to produce grounded and accurate responses.
+
+A major failure mode in RAG systems is poor document retrieval. When irrelevant documents are retrieved, even the best language model will generate incorrect or hallucinated answers.
+
+Chunking strategy plays a critical role in retrieval quality. Large chunks may dilute relevance, while very small chunks can lose context. Most production systems use chunk sizes between 500 and 800 tokens with some overlap.
+
+Embedding models convert text into vectors. The choice of embedding model directly impacts semantic search quality. Newer embedding models support variable-length embeddings, allowing teams to trade off cost and accuracy.
+
+Hybrid retrieval combines dense vector search with sparse keyword-based search such as BM25. Dense search captures semantic meaning, while sparse search ensures exact keyword matches.
+
+Reranking is used as a second-stage filter. Retrieved documents are passed through a reranker model, which orders them by relevance to the query. This step significantly reduces hallucinations.
+
+Observability and evaluation are essential for production RAG systems. Without tracing and metrics, teams cannot diagnose regressions or understand system behavior.
+
+In enterprise environments, retrieval quality is more important than model size. A smaller model with correct context often outperforms a larger model with poor retrieval.
