@@ -3,15 +3,15 @@ from dotenv import load_dotenv
 # Load environment variables before any other imports
 load_dotenv()
 
-from rag.graph import app
+from rag.supervisor import supervisor
 
 def main():
-    result = app.invoke(
-        {"question": "Explain BM25 keyword search in RAG systems"}
-    )
+    result = supervisor({
+        "question": "Research the arXiv paper 'Extending Llama-3's Context Ten-Fold Overnight' and write a dope LinkedIn post about it."
+    })
 
-    print("\nFINAL ANSWER\n")
-    print(result["answer"])
+    print("\nFINAL POST\n")
+    print(result["final_post"])
 
 if __name__ == "__main__":
     main()
