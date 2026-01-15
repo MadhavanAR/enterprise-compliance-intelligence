@@ -1,8 +1,8 @@
-import os
-from openai import OpenAI
-from openai import RateLimitError, APIError
+import requests
+from requests.exceptions import RequestException, ConnectionError, Timeout
 
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+OLLAMA_URL = "http://localhost:11434/api/generate"
+MODEL = "llama3.2:latest"
 
 SYSTEM_PROMPT = """You are a RAG assistant.
 Answer ONLY from the given context.
@@ -10,29 +10,43 @@ If the answer is not in the context, say "I don't know".
 """
 
 def generate_answer(question: str, context: list[str]) -> str:
-    """Generate answer using OpenAI API with error handling."""
-    if not os.environ.get("OPENAI_API_KEY"):
-        raise ValueError("OPENAI_API_KEY environment variable not set")
-    
-    joined_context = "\n\n".join(context)
+    """Generate answer using Ollama with error handling."""
+    prompt = f"""
+{SYSTEM_PROMPT}
+
+Context:
+{chr(10).join(context)}
+
+Question:
+{question}
+
+Answer:
+"""
 
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {
-                    "role": "user",
-                    "content": f"Context:\n{joined_context}\n\nQuestion:\n{question}"
-                }
-            ],
-            temperature=0.2,
+        response = requests.post(
+            OLLAMA_URL,
+            json={
+                "model": MODEL,
+                "prompt": prompt,
+                "stream": False
+            },
+            timeout=180
         )
-
-        return response.choices[0].message.content
-    except RateLimitError as e:
-        error_msg = "OpenAI API quota exceeded. Please check your billing details."
-        raise RuntimeError(error_msg) from e
-    except APIError as e:
-        error_msg = f"OpenAI API error: {str(e)}"
-        raise RuntimeError(error_msg) from e
+        response.raise_for_status()
+        return response.json()["response"]
+    except ConnectionError:
+        raise RuntimeError(
+            f"Could not connect to Ollama at {OLLAMA_URL}. "
+            "Please ensure Ollama is running: 'ollama serve'"
+        )
+    except Timeout:
+        raise RuntimeError(
+            "Ollama request timed out. The model may be taking too long to respond."
+        )
+    except RequestException as e:
+        raise RuntimeError(f"Ollama API error: {str(e)}")
+    except KeyError:
+        raise RuntimeError(
+            "Unexpected response format from Ollama. Please check the API response."
+        )
