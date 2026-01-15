@@ -1,0 +1,8 @@
+qdrant-client
+cohere
+requests
+langgraph
+langchain-core
+langchain-text-splitters
+sentence-transformers
+python-dotenv

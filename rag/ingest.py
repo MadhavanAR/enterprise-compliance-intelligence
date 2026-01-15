@@ -1,11 +1,16 @@
-# Document ingestion module
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pathlib import Path
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from rag.store import store_chunks
+from rag.logger import logger
 
-def load_and_chunk():
-    file_path = Path("data/sample_doc.txt")
-    text = file_path.read_text()
+
+def load_and_chunk(file_path: str = "data/sample_doc.txt") -> list[str]:
+    path = Path(file_path)
+
+    if not path.exists():
+        raise FileNotFoundError(f"Data file not found: {file_path}")
+
+    text = path.read_text()
 
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=600,
@@ -14,13 +19,19 @@ def load_and_chunk():
 
     chunks = splitter.split_text(text)
 
-    print(f"Total chunks created: {len(chunks)}")
+    logger.info(f"Total chunks created: {len(chunks)}")
+
     for i, chunk in enumerate(chunks):
-        print(f"\n--- Chunk {i} ---\n{chunk[:200]}")
+        logger.debug(f"Chunk {i}: {chunk[:200]}")
 
-    return chunks   # ✅ IMPORTANT
+    return chunks
 
-if __name__ == "__main__":
+
+def main():
     chunks = load_and_chunk()
     store_chunks(chunks)
-    print("Stored chunks in Qdrant")
+    logger.info("Stored chunks in Qdrant")
+
+
+if __name__ == "__main__":
+    main()

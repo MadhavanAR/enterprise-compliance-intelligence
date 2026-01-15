@@ -8,12 +8,15 @@ from qdrant_client.models import (
     PointStruct,
 )
 from rag.embeddings import embed_texts
+from rag.config import QDRANT_URL
+from rag.logger import logger
 
 COLLECTION_NAME = "demo_chunks"
 
-client = QdrantClient(url="http://localhost:6333")
+client = QdrantClient(url=QDRANT_URL)
 
 def create_collection(vector_size):
+    logger.info(f"Creating collection '{COLLECTION_NAME}' with vector size {vector_size}")
     client.recreate_collection(
         collection_name=COLLECTION_NAME,
         vectors_config={
@@ -26,6 +29,7 @@ def create_collection(vector_size):
             "sparse": SparseVectorParams()
         }
     )
+    logger.info(f"Collection '{COLLECTION_NAME}' created successfully")
 
 def to_sparse(text: str):
     counts = Counter(text.lower().split())
@@ -35,6 +39,7 @@ def to_sparse(text: str):
     )
 
 def store_chunks(chunks):
+    logger.info(f"Storing {len(chunks)} chunks in Qdrant")
     dense_vectors = embed_texts(chunks)
 
     create_collection(len(dense_vectors[0]))
@@ -56,3 +61,4 @@ def store_chunks(chunks):
         collection_name=COLLECTION_NAME,
         points=points
     )
+    logger.info(f"Successfully stored {len(points)} points in collection '{COLLECTION_NAME}'")

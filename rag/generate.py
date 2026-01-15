@@ -1,8 +1,7 @@
 import requests
 from requests.exceptions import RequestException, ConnectionError, Timeout
-
-OLLAMA_URL = "http://localhost:11434/api/generate"
-MODEL = "llama3.2:latest"
+from rag.config import OLLAMA_URL, OLLAMA_MODEL
+from rag.logger import logger
 
 SYSTEM_PROMPT = """You are a RAG assistant.
 Answer ONLY from the given context.
@@ -12,6 +11,8 @@ Do not expand acronyms unless explicitly defined in the context.
 
 def generate_answer(question: str, context: list[str]) -> str:
     """Generate answer using Ollama with error handling."""
+    logger.info(f"Generating answer for question: {question[:50]}...")
+    logger.debug(f"Using {len(context)} context documents")
     prompt = f"""
 {SYSTEM_PROMPT}
 
@@ -25,17 +26,20 @@ Answer:
 """
 
     try:
+        logger.debug(f"Calling Ollama API: {OLLAMA_URL} with model {OLLAMA_MODEL}")
         response = requests.post(
             OLLAMA_URL,
             json={
-                "model": MODEL,
+                "model": OLLAMA_MODEL,
                 "prompt": prompt,
                 "stream": False
             },
             timeout=180
         )
         response.raise_for_status()
-        return response.json()["response"]
+        answer = response.json()["response"]
+        logger.info("Answer generated successfully")
+        return answer
     except ConnectionError:
         raise RuntimeError(
             f"Could not connect to Ollama at {OLLAMA_URL}. "

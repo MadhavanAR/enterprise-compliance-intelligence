@@ -1,15 +1,30 @@
 [
-    {
-      "query": "What is BM25 in RAG?",
-      "relevant_docs": [
-        "BM25 is a keyword-based search algorithm"
-      ]
-    },
-    {
-      "query": "What breaks RAG systems?",
-      "relevant_docs": [
-        "poor document retrieval",
-        "retrieval quality is more important than model size"
-      ]
-    }
-  ]
+  {
+    "query": "What is BM25 in RAG?",
+    "relevant_docs": [
+      "BM25 is a keyword-based search algorithm",
+      "sparse keyword-based search such as BM25"
+    ]
+  },
+  {
+    "query": "Why do RAG systems hallucinate?",
+    "relevant_docs": [
+      "poor document retrieval",
+      "wrong documents were retrieved"
+    ]
+  },
+  {
+    "query": "Why is retrieval more important than the LLM in RAG?",
+    "relevant_docs": [
+      "retrieval quality is more important than model size",
+      "correct context often outperforms a larger model"
+    ]
+  },
+  {
+    "query": "How does reranking improve RAG results?",
+    "relevant_docs": [
+      "reranking is used as a second-stage filter",
+      "orders them by relevance to the query"
+    ]
+  }
+]
