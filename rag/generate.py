@@ -26,7 +26,7 @@ Answer:
 """
 
     try:
-        logger.debug(f"Calling Ollama API: {OLLAMA_URL} with model {OLLAMA_MODEL}")
+        logger.info(f"Calling Ollama API: {OLLAMA_URL} with model {OLLAMA_MODEL}")
         response = requests.post(
             OLLAMA_URL,
             json={
@@ -40,15 +40,26 @@ Answer:
         answer = response.json()["response"]
         logger.info("Answer generated successfully")
         return answer
-    except ConnectionError:
+    except ConnectionError as e:
         raise RuntimeError(
             f"Could not connect to Ollama at {OLLAMA_URL}. "
-            "Please ensure Ollama is running: 'ollama serve'"
+            "Please ensure Ollama is running: 'ollama serve'. "
+            f"Error: {str(e)}"
         )
     except Timeout:
         raise RuntimeError(
             "Ollama request timed out. The model may be taking too long to respond."
         )
+    except requests.exceptions.HTTPError as e:
+        error_msg = f"Ollama API HTTP error: {str(e)}"
+        if hasattr(e.response, 'url'):
+            error_msg += f" (URL: {e.response.url})"
+        if e.response.status_code == 405:
+            error_msg += (
+                f"\nMethod not allowed. Check that OLLAMA_URL is correct: {OLLAMA_URL}. "
+                "Expected format: http://localhost:11434/api/generate"
+            )
+        raise RuntimeError(error_msg)
     except RequestException as e:
         raise RuntimeError(f"Ollama API error: {str(e)}")
     except KeyError:
