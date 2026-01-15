@@ -1,0 +1,15 @@
+[
+    {
+      "query": "What is BM25 in RAG?",
+      "relevant_docs": [
+        "BM25 is a keyword-based search algorithm"
+      ]
+    },
+    {
+      "query": "What breaks RAG systems?",
+      "relevant_docs": [
+        "poor document retrieval",
+        "retrieval quality is more important than model size"
+      ]
+    }
+  ]
