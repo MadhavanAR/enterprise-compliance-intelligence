@@ -1,6 +1,7 @@
 # Document ingestion module
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pathlib import Path
+from rag.store import store_chunks
 
 def load_and_chunk():
     file_path = Path("data/sample_doc.txt")
@@ -17,5 +18,9 @@ def load_and_chunk():
     for i, chunk in enumerate(chunks):
         print(f"\n--- Chunk {i} ---\n{chunk[:200]}")
 
+    return chunks   # ✅ IMPORTANT
+
 if __name__ == "__main__":
-    load_and_chunk()
+    chunks = load_and_chunk()
+    store_chunks(chunks)
+    print("Stored chunks in Qdrant")
