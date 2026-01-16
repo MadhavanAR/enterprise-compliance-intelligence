@@ -7,10 +7,10 @@ class RagState(TypedDict):
     answer: str
     route: Literal["rag", "end"]
 
-# Phase 2 state (new agent state)
+# Phase 3 state (formalized agent state)
 class AgentState(TypedDict):
     question: str
     research_notes: List[str]
-    draft: str
-    final_post: str
-    next: str
+    context: List[str]
+    answer: str
+    tool_calls: List[dict]  # Track MCP tool usage

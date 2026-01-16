@@ -1,17 +1,13 @@
 from dotenv import load_dotenv
+from rag.supervisor import build_supervisor
 
-# Load environment variables before any other imports
 load_dotenv()
 
-from rag.supervisor import supervisor
+app = build_supervisor()
 
-def main():
-    result = supervisor({
-        "question": "Research the arXiv paper 'Extending Llama-3's Context Ten-Fold Overnight' and write a dope LinkedIn post about it."
-    })
+result = app.invoke({
+    "question": "Did the Edmonton Oilers win the 2025 Stanley Cup?"
+})
 
-    print("\nFINAL POST\n")
-    print(result["final_post"])
-
-if __name__ == "__main__":
-    main()
+print("\nFINAL ANSWER\n")
+print(result["answer"])

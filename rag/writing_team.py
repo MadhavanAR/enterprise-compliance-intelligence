@@ -3,46 +3,27 @@ from rag.state import AgentState
 from rag.generate import generate_answer
 
 def note_taker(state: AgentState):
-    notes = "\n".join(state["research_notes"])
-    return {"draft": notes}
+    return {"research_notes": state["context"]}
 
 def copy_editor(state: AgentState):
-    prompt = f"""Turn these research notes into a professional LinkedIn post draft.
-
-Research Notes:
-{state["draft"]}
-
-Write a clear, informative LinkedIn post based on these notes."""
-    
-    draft = generate_answer(
-        prompt,
-        [state["draft"]]
-    )
-    return {"draft": draft}
+    return {"research_notes": state["research_notes"]}
 
 def dopeness_editor(state: AgentState):
-    prompt = f"""Make this LinkedIn post more engaging by adding emojis and relevant hashtags.
-
-Post Draft:
-{state["draft"]}
-
-Enhance this post with appropriate emojis and hashtags while keeping the content professional."""
-    
-    final = generate_answer(
-        prompt,
-        [state["draft"]]
+    answer = generate_answer(
+        state["question"],
+        state["research_notes"]
     )
-    return {"final_post": final}
+    return {"answer": answer}
 
 def build_writing_graph():
     graph = StateGraph(AgentState)
-    graph.add_node("notes", note_taker)
-    graph.add_node("edit", copy_editor)
-    graph.add_node("dope", dopeness_editor)
+    graph.add_node("note_taker", note_taker)
+    graph.add_node("copy_editor", copy_editor)
+    graph.add_node("dopeness_editor", dopeness_editor)
 
-    graph.set_entry_point("notes")
-    graph.add_edge("notes", "edit")
-    graph.add_edge("edit", "dope")
-    graph.add_edge("dope", END)
+    graph.set_entry_point("note_taker")
+    graph.add_edge("note_taker", "copy_editor")
+    graph.add_edge("copy_editor", "dopeness_editor")
+    graph.add_edge("dopeness_editor", END)
 
     return graph.compile()
