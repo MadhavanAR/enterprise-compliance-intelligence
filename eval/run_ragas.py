@@ -1,14 +1,16 @@
 from ragas import evaluate
 from ragas.llms import llm_factory
-from ragas.embeddings import HuggingFaceEmbeddings
 from openai import OpenAI
-from eval.ragas_data import build_dataset
 
-# Use Ollama as the RAGAS judge LLM via llm_factory
-# Ollama exposes OpenAI-compatible API
+from eval.ragas_data import build_dataset
+from eval.embeddings_adapter import RagasEmbeddingAdapter
+from rag.embeddings import model  # Import the SentenceTransformer model
+
+
+# Ollama judge LLM (OpenAI-compatible)
 ollama_client = OpenAI(
     base_url="http://localhost:11434/v1",
-    api_key="ollama"  # Ollama doesn't require a real API key
+    api_key="ollama"
 )
 
 judge_llm = llm_factory(
@@ -16,16 +18,15 @@ judge_llm = llm_factory(
     client=ollama_client
 )
 
-# Use HuggingFace embeddings (local, no API key needed)
-embeddings = HuggingFaceEmbeddings(model="sentence-transformers/all-MiniLM-L6-v2")
+# Wrap your existing embeddings model for RAGAS
+ragas_embeddings = RagasEmbeddingAdapter(model)
 
 dataset = build_dataset()
 
-# Pass llm and embeddings directly to evaluate (uses default metrics)
 results = evaluate(
     dataset,
     llm=judge_llm,
-    embeddings=embeddings
+    embeddings=ragas_embeddings
 )
 
 print("\nRAGAS RESULTS")

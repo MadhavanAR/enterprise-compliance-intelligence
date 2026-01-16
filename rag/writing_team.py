@@ -1,6 +1,7 @@
 from langgraph.graph import StateGraph, END
 from rag.state import AgentState
 from rag.generate import generate_answer
+from rag.logger import get_logger
 
 def note_taker(state: AgentState):
     return {"research_notes": state["context"]}
@@ -9,10 +10,16 @@ def copy_editor(state: AgentState):
     return {"research_notes": state["research_notes"]}
 
 def dopeness_editor(state: AgentState):
+    trace_id = state.get("trace_id")
+    logger = get_logger(trace_id)
+    
+    logger.start_timer("writing")
     answer = generate_answer(
         state["question"],
-        state["research_notes"]
+        state["research_notes"],
+        trace_id=trace_id
     )
+    logger.end_timer("writing", answer_length=len(answer))
     return {"answer": answer}
 
 def build_writing_graph():

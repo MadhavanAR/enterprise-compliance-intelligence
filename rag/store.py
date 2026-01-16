@@ -6,10 +6,14 @@ from qdrant_client.models import (
     SparseVectorParams,
     SparseVector,
     PointStruct,
+    Filter,
+    FieldCondition,
+    MatchValue,
 )
 from rag.embeddings import embed_texts
 from rag.config import QDRANT_URL
 from rag.logger import logger
+from typing import List, Tuple, Dict, Any, Optional
 
 COLLECTION_NAME = "demo_chunks"
 
@@ -38,14 +42,34 @@ def to_sparse(text: str):
         values=list(counts.values())
     )
 
-def store_chunks(chunks):
-    logger.info(f"Storing {len(chunks)} chunks in Qdrant")
-    dense_vectors = embed_texts(chunks)
+def store_chunks(chunks: List[Tuple[str, Dict[str, Any]]]):
+    """
+    Store chunks with metadata.
+    
+    Args:
+        chunks: List of (chunk_text, metadata) tuples
+    """
+    # Handle backward compatibility (plain list of strings)
+    if chunks and isinstance(chunks[0], str):
+        logger.warning("Legacy format detected: storing chunks without metadata")
+        chunks = [(chunk, {"author": "unknown", "source": "unknown", "document_id": "unknown"}) 
+                 for chunk in chunks]
+    
+    logger.info(f"Storing {len(chunks)} chunks in Qdrant with metadata")
+    
+    chunk_texts = [chunk for chunk, _ in chunks]
+    dense_vectors = embed_texts(chunk_texts)
 
     create_collection(len(dense_vectors[0]))
 
     points = []
-    for idx, chunk in enumerate(chunks):
+    for idx, (chunk, metadata) in enumerate(chunks):
+        # Payload includes both text and metadata
+        payload = {
+            "text": chunk,
+            **metadata  # Spread metadata into payload
+        }
+        
         points.append(
             PointStruct(
                 id=idx,
@@ -53,7 +77,7 @@ def store_chunks(chunks):
                     "dense": dense_vectors[idx],
                     "sparse": to_sparse(chunk)
                 },
-                payload={"text": chunk}
+                payload=payload
             )
         )
 
@@ -61,4 +85,4 @@ def store_chunks(chunks):
         collection_name=COLLECTION_NAME,
         points=points
     )
-    logger.info(f"Successfully stored {len(points)} points in collection '{COLLECTION_NAME}'")
+    logger.info(f"Successfully stored {len(points)} points in collection '{COLLECTION_NAME}' with metadata")

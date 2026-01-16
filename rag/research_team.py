@@ -1,8 +1,9 @@
+import asyncio
 from langgraph.graph import StateGraph, END
 from rag.state import AgentState
-from rag.retrieve import search
-from rag.mcp_client import call_tool
-from rag.logger import logger
+from rag.retrieve import search  # Use sync version (async wrapper available)
+from rag.mcp_client import call_tool  # Keep sync for now (can be async later)
+from rag.logger import get_logger
 
 def needs_web_search(question: str) -> bool:
     """Determine if query needs live/current information via web_search."""
@@ -17,29 +18,51 @@ def needs_dice_roll(question: str) -> bool:
 def research_node(state: AgentState) -> dict:
     """
     Research node - intelligently routes to MCP tools or RAG.
+    
     Decision rules:
     - If query needs live/current info → web_search
     - If query needs calculation/randomness → roll_dice
     - Else → use RAG retrieval
+    
+    STRICT METADATA ENFORCEMENT: Applies metadata_filters to RAG retrieval.
+    HARD REFUSAL: Returns empty notes if metadata filter yields zero docs.
     """
+    trace_id = state.get("trace_id")
+    logger = get_logger(trace_id)
+    
     question = state["question"]
+    metadata_filters = state.get("metadata_filters")  # Extract metadata filters
     notes = []
     tool_calls = state.get("tool_calls", [])
+    used_tools = []
+    decision_path = "rag"  # Default
+    
+    logger.start_timer("research")
     
     if needs_web_search(question):
-        logger.info("Calling MCP tool: web_search")
+        logger.info("Decision: Using MCP tool web_search", decision_path="web_search")
+        logger.start_timer("mcp_web_search")
         try:
             result = call_tool("web_search", {"query": question})
-            notes.append(result["result"])
+            # Improved parsing: check for verified answer
+            if result.get("has_verified_answer", False):
+                notes.append(result["result"])
+            else:
+                # No verified answer - mark explicitly
+                logger.info("Web search returned no verified answer")
+                notes.append(result["result"])  # Still include for transparency
             tool_calls.append({"tool": "web_search", "query": question})
-            logger.info("Web search completed")
+            used_tools.append("web_search")
+            logger.end_timer("mcp_web_search", result_length=len(result.get("result", "")))
         except Exception as e:
-            logger.error(f"Tool error: {e}")
-            # Fallback to RAG
-            docs = search(question)
+            logger.error("Tool error, falling back to RAG", error=str(e))
+            # Fallback to RAG with metadata filters
+            docs = search(question, metadata_filters=metadata_filters)
             notes.extend(docs)
     elif needs_dice_roll(question):
-        logger.info("Calling MCP tool: roll_dice")
+        decision_path = "roll_dice"
+        logger.info("Decision: Using MCP tool roll_dice", decision_path=decision_path)
+        logger.start_timer("mcp_roll_dice")
         try:
             # Extract dice parameters (simple heuristic)
             sides = 6
@@ -58,22 +81,39 @@ def research_node(state: AgentState) -> dict:
             result_text = f"Dice roll: {dice_result['results']} (total: {dice_result['total']})"
             notes.append(result_text)
             tool_calls.append({"tool": "roll_dice", "sides": sides, "count": count})
-            logger.info("Dice roll completed")
+            used_tools.append("roll_dice")
+            logger.end_timer("mcp_roll_dice", total=dice_result.get("total"))
         except Exception as e:
-            logger.error(f"Tool error: {e}")
-            # Fallback to RAG
-            docs = search(question)
+            logger.error("Tool error, falling back to RAG", error=str(e))
+            # Fallback to RAG with metadata filters
+            docs = search(question, metadata_filters=metadata_filters)
             notes.extend(docs)
     else:
-        logger.info("Using RAG retrieval")
-        docs = search(question)
+        decision_path = "rag"
+        logger.info(f"Decision: Using RAG retrieval (path: {decision_path}, filters: {metadata_filters})")
+        logger.start_timer("rag_retrieval")
+        # STRICT METADATA ENFORCEMENT: Pass metadata_filters to search
+        docs = search(question, metadata_filters=metadata_filters)
+        # HARD REFUSAL: If metadata filter returns zero docs, notes will be empty
+        # This will trigger "I don't know" in generate_answer()
         notes.extend(docs)
+        logger.end_timer("rag_retrieval", docs_retrieved=len(docs))
+        
+        # Log if metadata filter resulted in zero docs
+        if metadata_filters and len(docs) == 0:
+            logger.warning(f"Metadata filter returned zero documents - will trigger hard refusal: {metadata_filters}")
     
-    logger.info(f"Research notes collected: {len(notes)} items")
+    logger.end_timer("research", notes_count=len(notes), tool_calls_count=len(tool_calls))
+    
+    # EXPLICIT AGENT STATE: Include all required fields
     return {
         "research_notes": notes,
         "context": notes,  # Keep context in sync
-        "tool_calls": tool_calls
+        "tool_calls": tool_calls,
+        "trace_id": trace_id,  # Propagate trace_id
+        "decision_path": decision_path,  # Explicit decision path
+        "used_tools": used_tools,  # List of tools invoked
+        "metadata_filters": metadata_filters  # Propagate filters
     }
 
 def build_research_graph():

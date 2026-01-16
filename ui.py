@@ -1,7 +1,9 @@
 import streamlit as st
 from rag.graph import app
+from rag.generate_ui import generate_answer_stream_ui
 from dotenv import load_dotenv
 import time
+import re
 
 load_dotenv()
 
@@ -648,9 +650,124 @@ st.markdown("""
         backdrop-filter: blur(10px);
     }
     
+    /* Citation badges */
+    .citation-badge {
+        background: rgba(59, 130, 246, 0.2);
+        color: #93c5fd;
+        padding: 0.15rem 0.4rem;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        font-weight: 500;
+        cursor: pointer;
+        margin: 0 0.15rem;
+        border: 1px solid rgba(59, 130, 246, 0.3);
+        transition: all 0.2s;
+    }
+    
+    .citation-badge:hover {
+        background: rgba(59, 130, 246, 0.3);
+        transform: scale(1.05);
+    }
+    
     /* Removed tech badges */
 </style>
 """, unsafe_allow_html=True)
+
+# Helper functions for formatting (defined before use)
+def _format_answer_with_citations(answer: str) -> str:
+    """Format answer with clickable citations."""
+    import re
+    def replace_citation(match):
+        doc_num = match.group(1)
+        return f'<span class="citation-badge" data-doc="{doc_num}">[Doc {doc_num}]</span>'
+    
+    formatted = re.sub(r'\[Doc (\d+)\]', replace_citation, answer)
+    formatted = formatted.replace('\n', '<br>')
+    return formatted
+
+def _format_answer_with_metadata(answer: str, metadata: dict) -> str:
+    """Format answer with citations and 'Why this answer?' panel."""
+    import re
+    
+    def replace_citation(match):
+        doc_num = match.group(1)
+        return f'<span class="citation-badge" data-doc="{doc_num}">[Doc {doc_num}]</span>'
+    
+    formatted_answer = re.sub(r'\[Doc (\d+)\]', replace_citation, answer)
+    formatted_answer = formatted_answer.replace('\n', '<br>')
+    
+    why_panel = _build_why_panel(metadata)
+    
+    return f'''
+    <div class="assistant-message">
+        {formatted_answer}
+        {why_panel}
+    </div>
+    '''
+
+def _build_why_panel(metadata: dict) -> str:
+    """Build collapsible 'Why this answer?' debug panel."""
+    research_notes = metadata.get("research_notes", [])
+    tool_calls = metadata.get("tool_calls", [])
+    decision_path = metadata.get("decision_path", "rag")
+    
+    if not research_notes and not tool_calls:
+        return ""
+    
+    tool_info = ""
+    if tool_calls:
+        tool = tool_calls[0].get("tool", "")
+        tool_info = f"<strong>Tool:</strong> {tool}<br>"
+    
+    decision_info = f"<strong>Decision Path:</strong> {decision_path}<br>"
+    docs_info = f"<strong>Documents Used:</strong> {len(research_notes)}<br>"
+    
+    sources_html = ""
+    if research_notes:
+        sources_html = "<strong>Sources:</strong><ul style='margin: 0.5rem 0; padding-left: 1.5rem;'>"
+        for i, note in enumerate(research_notes[:3], 1):
+            preview = note[:100] + "..." if len(note) > 100 else note
+            sources_html += f"<li style='color: #9ca3af; font-size: 0.85rem; margin: 0.25rem 0;'>{preview}</li>"
+        sources_html += "</ul>"
+    
+    return f'''
+    <details style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid rgba(255,255,255,0.1);">
+        <summary style="cursor: pointer; color: #9ca3af; font-size: 0.85rem; user-select: none;">
+            💡 Why this answer?
+        </summary>
+        <div style="margin-top: 0.75rem; padding: 0.75rem; background: rgba(139, 92, 246, 0.1); border-radius: 8px; font-size: 0.85rem; color: #d1d5db;">
+            {decision_info}
+            {tool_info}
+            {docs_info}
+            {sources_html}
+        </div>
+    </details>
+    '''
+
+def _format_error_ux(error_msg: str) -> str:
+    """Format error messages with better UX."""
+    if "don't know" in error_msg.lower() or "no context" in error_msg.lower():
+        return """
+**I don't have enough verified context to answer this safely.**
+
+*Options:*
+- 🔍 **Try rephrasing your question**
+- 📄 **Upload a relevant document**
+- 🌐 **Enable web search** (if configured)
+
+This safety feature prevents hallucination and ensures accurate answers.
+"""
+    
+    return f"""
+**Something went wrong**
+
+*Error:* {error_msg}
+
+*What you can do:*
+- Check that Ollama is running (`ollama serve`)
+- Verify Qdrant is accessible
+- Try rephrasing your question
+"""
 
 # Initialize session state
 if "messages" not in st.session_state:
@@ -711,8 +828,14 @@ else:
         if message["role"] == "user":
             st.markdown(f'<div class="user-message">{message["content"]}</div>', unsafe_allow_html=True)
         else:
-            content = message["content"].replace("\n", "\n\n")
-            st.markdown(f'<div class="assistant-message">{content}</div>', unsafe_allow_html=True)
+            # Check if message has metadata for "Why this answer?" panel
+            if "metadata" in message:
+                content = _format_answer_with_metadata(message["content"], message["metadata"])
+                st.markdown(content, unsafe_allow_html=True)
+            else:
+                # Legacy format (no metadata)
+                content = _format_answer_with_citations(message["content"])
+                st.markdown(f'<div class="assistant-message">{content}</div>', unsafe_allow_html=True)
         
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -751,31 +874,104 @@ if submit_button and query and not st.session_state.processing:
     st.rerun()
     
 elif st.session_state.messages and st.session_state.messages[-1]["role"] == "user" and st.session_state.processing:
-    # Process the last user message
+    # Process the last user message with streaming
     user_query = st.session_state.messages[-1]["content"]
     
     status_placeholder = st.empty()
-    status_placeholder.markdown(
-        '<div class="status-badge">🔄 Retrieving documents and generating answer<span class="loading-dots"></span></div>',
-        unsafe_allow_html=True
-    )
+    answer_placeholder = st.empty()
     
     try:
-        # Run RAG pipeline
-        result = app.invoke({"question": user_query})
-        answer = result.get("answer", "I couldn't generate an answer.")
+        # Initialize answer state
+        if "current_answer" not in st.session_state:
+            st.session_state.current_answer = ""
+        if "metadata" not in st.session_state:
+            st.session_state.metadata = {}
         
-        # Add assistant message
-        st.session_state.messages.append({"role": "assistant", "content": answer})
-        st.session_state.processing = False
-        status_placeholder.empty()
-        st.rerun()
+        # Stream answer with metadata
+        for chunk in generate_answer_stream_ui(user_query):
+            if chunk["type"] == "status":
+                # Update status indicator
+                status_text = chunk["data"]
+                status_placeholder.markdown(
+                    f'<div class="status-badge">{status_text}<span class="loading-dots"></span></div>',
+                    unsafe_allow_html=True
+                )
+            
+            elif chunk["type"] == "metadata":
+                # Store metadata for "Why this answer?" panel
+                metadata = chunk["data"]
+                st.session_state.metadata = metadata
+                
+                decision_path = metadata.get("decision_path", "rag")
+                status_map = {
+                    "rag": "🔍 Retrieving documents",
+                    "web_search": "🌐 Searching the web",
+                    "roll_dice": "🎲 Calculating"
+                }
+                status_text = status_map.get(decision_path, "🔍 Processing")
+                status_placeholder.markdown(
+                    f'<div class="status-badge">{status_text}<span class="loading-dots"></span></div>',
+                    unsafe_allow_html=True
+                )
+            
+            elif chunk["type"] == "token":
+                # Append token and update display
+                st.session_state.current_answer += chunk["data"]
+                answer_placeholder.markdown(
+                    f'<div class="assistant-message">{_format_answer_with_citations(st.session_state.current_answer)}</div>',
+                    unsafe_allow_html=True
+                )
+            
+            elif chunk["type"] == "done":
+                # Final answer with metadata
+                final_data = chunk["data"]
+                final_answer = final_data.get("answer", st.session_state.current_answer)
+                citations = final_data.get("citations", [])
+                
+                # Update status
+                status_placeholder.markdown(
+                    '<div class="status-badge">✅ Complete</div>',
+                    unsafe_allow_html=True
+                )
+                
+                # Format answer with citations and "Why this answer?" panel
+                formatted_content = _format_answer_with_metadata(
+                    final_answer,
+                    st.session_state.metadata
+                )
+                
+                answer_placeholder.markdown(formatted_content, unsafe_allow_html=True)
+                
+                # Store final message
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": final_answer,
+                    "metadata": st.session_state.metadata
+                })
+                
+                # Cleanup
+                del st.session_state.current_answer
+                del st.session_state.metadata
+                st.session_state.processing = False
+                
+                # Clear status after brief delay
+                time.sleep(0.5)
+                status_placeholder.empty()
+                st.rerun()
         
     except Exception as e:
-        error_message = f"❌ **Error:** {str(e)}"
+        error_message = _format_error_ux(str(e))
         st.session_state.messages.append({"role": "assistant", "content": error_message})
         st.session_state.processing = False
         status_placeholder.empty()
+        answer_placeholder.empty()
+        
+        # Cleanup
+        if "current_answer" in st.session_state:
+            del st.session_state.current_answer
+        if "metadata" in st.session_state:
+            del st.session_state.metadata
+        
         st.rerun()
 
 elif submit_button and not query:

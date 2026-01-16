@@ -4,5 +4,11 @@ requests
 langgraph
 langchain-core
 langchain-text-splitters
+langchain-community
 sentence-transformers
 python-dotenv
+pyyaml
+datasets
+ragas
+streamlit
+openai

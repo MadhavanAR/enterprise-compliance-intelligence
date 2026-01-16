@@ -1,0 +1,62 @@
+# Production RAG Platform Configuration
+# All runtime settings are controlled here (no hardcoded values)
+
+# LLM Configuration
+llm:
+  model: "llama3.2:latest"
+  base_url: "http://localhost:11434/api/generate"
+  temperature: 0  # Deterministic (FAANG-grade)
+  max_tokens: 2048  # Cap output length
+  timeout: 180  # seconds
+
+# Embeddings Configuration
+embeddings:
+  model: "sentence-transformers/all-MiniLM-L6-v2"
+  device: "auto"  # auto, cpu, cuda, mps
+
+# Retrieval Configuration
+retrieval:
+  top_k: 5
+  use_rerank: true
+  rerank_model: "rerank-english-v3.0"
+  rerank_top_n: 5
+  context_limit: 2  # Max docs passed to LLM (faithfulness optimization)
+  rerank_min_docs: 3  # Only rerank if >= N docs
+  rerank_max_docs: 10  # Cap rerank candidates (cost control)
+  rerank_min_query_words: 3  # Skip rerank for short queries
+
+# Vector Database
+qdrant:
+  url: "http://localhost:6333"
+  collection_name: "demo_chunks"
+
+# Evaluation Gates (FAANG-grade quality control)
+evaluation:
+  gates:
+    faithfulness:
+      min: 0.8
+      block_on_fail: true  # Block release if below threshold
+    context_precision:
+      min: 0.9
+      block_on_fail: false  # Warning only
+    context_recall:
+      min: 0.8
+      block_on_fail: false
+    answer_relevancy:
+      min: 0.5
+      block_on_fail: false
+
+# Observability
+observability:
+  log_level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  enable_structured_logs: true
+  log_trace_ids: true
+  log_latencies: true
+  log_token_usage: true
+
+# MCP Tools
+mcp:
+  enabled: true
+  tools:
+    - roll_dice
+    - web_search

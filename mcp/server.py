@@ -20,7 +20,13 @@ def roll_dice(sides: int = 6, count: int = 1) -> dict:
     }
 
 def web_search(query: str) -> dict:
-    """Perform web search and return results."""
+    """
+    Perform web search and return structured results.
+    
+    Improved output quality:
+    - Extracts structured answer if available
+    - Marks explicitly as "no verified answer" if not available
+    """
     # Using DuckDuckGo instant answer API (no API key needed)
     try:
         url = "https://api.duckduckgo.com/"
@@ -37,21 +43,31 @@ def web_search(query: str) -> dict:
         answer = data.get("Answer", "")
         answer_type = data.get("AnswerType", "")
         
-        result_text = answer if answer else abstract
-        if not result_text:
-            result_text = f"Search query: {query}. No instant answer available."
+        # Improved parsing: prefer structured answer, fallback to abstract
+        if answer and answer.strip():
+            result_text = answer
+            has_verified_answer = True
+        elif abstract and abstract.strip():
+            result_text = abstract
+            has_verified_answer = True
+        else:
+            # Explicit mark for no verified answer (not vague phrase)
+            result_text = f"No verified answer available for: {query}"
+            has_verified_answer = False
         
         return {
             "query": query,
             "result": result_text,
             "answer_type": answer_type,
-            "source": "DuckDuckGo"
+            "source": "DuckDuckGo",
+            "has_verified_answer": has_verified_answer  # Explicit flag
         }
     except Exception as e:
         return {
             "query": query,
             "result": f"Search failed: {str(e)}",
-            "error": True
+            "error": True,
+            "has_verified_answer": False
         }
 
 def handle_request(request: dict) -> dict:
