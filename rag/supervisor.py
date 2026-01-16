@@ -1,5 +1,7 @@
 from rag.state import RagState
 from rag.logger import get_logger
+from rag.query_router import route_query
+from rag.policy_engine import evaluate_policies, check_post_generation_policy
 
 # Phase 1 supervisor (keep for backward compatibility)
 def supervisor_node(state: RagState):
@@ -11,7 +13,7 @@ def supervisor_node(state: RagState):
     
     return {"route": "rag"}  # default
 
-# Phase 3 supervisor (formalized multi-agent supervisor)
+# Phase 3 supervisor (formalized multi-agent supervisor with Query Router)
 from langgraph.graph import StateGraph, END
 from rag.research_team import build_research_graph
 from rag.writing_team import build_writing_graph
@@ -22,10 +24,13 @@ writing_app = build_writing_graph()
 
 def supervisor_node_phase3(state: AgentState):
     """
-    Supervisor node with observability and explicit state management.
+    Supervisor node with Query Router, observability, and explicit state management.
     
-    EXPLICIT AGENT STATE: Ensures trace_id, decision_path, used_tools, metadata_filters
-    are propagated through the pipeline.
+    ENTERPRISE-GRADE:
+    - Query Router: Intent classification, routing decision, metadata extraction
+    - Explicit Agent State: trace_id, decision_path, used_tools, metadata_filters
+    - Grounded Answer: Structured claims + citations
+    - Confidence Scoring: Risk level estimation
     """
     trace_id = state.get("trace_id")
     logger = get_logger(trace_id)
@@ -36,40 +41,191 @@ def supervisor_node_phase3(state: AgentState):
         trace_id = str(uuid.uuid4())
         state["trace_id"] = trace_id
     
-    logger.info(f"Supervisor: Routing to Research Team (query: {state['question'][:50]}..., filters: {state.get('metadata_filters')})")
+    question = state.get("question", "")
+    
+    # QUERY ROUTER: Intent classification and routing decision
+    logger.info("Query Router: Analyzing query intent", query_preview=question[:50])
+    routing_decision = route_query(question, trace_id=trace_id)
+    
+    # Extract routing decision
+    use_rag = routing_decision.get("use_rag", True)
+    use_web = routing_decision.get("use_web", False)
+    refuse = routing_decision.get("refuse", False)
+    intent = routing_decision.get("intent", "unknown")
+    confidence_requirement = routing_decision.get("confidence_requirement", "medium")
+    
+    # Extract metadata filters from routing decision
+    routing_metadata_filters = routing_decision.get("metadata_filters")
+    if routing_metadata_filters:
+        # Merge with existing metadata filters (routing takes precedence)
+        existing_filters = state.get("metadata_filters", {}) or {}
+        metadata_filters = {**existing_filters, **routing_metadata_filters}
+    else:
+        metadata_filters = state.get("metadata_filters")
+    
+    logger.info("Query Router: Decision complete",
+                intent=intent,
+                use_rag=use_rag,
+                use_web=use_web,
+                refuse=refuse,
+                metadata_filters=metadata_filters,
+                confidence_requirement=confidence_requirement)
+    
+    # POLICY ENGINE: Evaluate policies BEFORE retrieval (deterministic, no LLM)
+    policy_result = evaluate_policies(
+        intent=intent,
+        confidence_requirement=confidence_requirement,
+        metadata_filters=metadata_filters,
+        trace_id=trace_id
+    )
+    
+    # Extract policy decision
+    policy_allowed = policy_result.get("allowed", True)
+    policy_refuse = policy_result.get("refuse", False)
+    policy_reason = policy_result.get("reason")
+    confidence_threshold = policy_result.get("confidence_threshold", 0.5)
+    refuse_on_low_confidence = policy_result.get("refuse_on_low_confidence", False)
+    policy_violations = policy_result.get("policy_violations", [])
+    
+    # Store policy result in state for later use
+    state["policy_result"] = policy_result
+    
+    # Update decision path with policy evaluation
+    decision_path = ["query_router"]
+    if policy_violations:
+        decision_path.append("policy_check")
+    
+    logger.info("Policy Engine: Policies evaluated",
+                allowed=policy_allowed,
+                refuse=policy_refuse,
+                confidence_threshold=confidence_threshold,
+                violations_count=len(policy_violations))
+    
+    # HARD REFUSAL: If router OR policy says refuse, return immediately
+    if refuse or not policy_allowed or policy_refuse:
+        refusal_reason = policy_reason or "Query refused: opinion/speculation detected by router"
+        logger.warning("Query refused", reason=refusal_reason, policy_violations=policy_violations)
+        
+        decision_path.append("refuse")
+        
+        return {
+            "answer": "I don't know.",
+            "claims": [],
+            "sources_used": [],
+            "confidence": 0.0,
+            "confidence_reason": refusal_reason,
+            "trace_id": trace_id,
+            "decision_path": decision_path,
+            "used_tools": [],
+            "metadata_filters": metadata_filters,
+            "intent": intent,
+            "policy_violations": policy_violations
+        }
+    
+    # Update state with routing decision and metadata filters
+    state["metadata_filters"] = metadata_filters
+    state["routing_decision"] = routing_decision
+    
+    # Determine decision path
+    if use_web:
+        decision_path = ["query_router", "web_search"]
+    elif use_rag:
+        decision_path = ["query_router", "rag"]
+    else:
+        decision_path = ["query_router", "unknown"]
+    
+    logger.info(f"Supervisor: Routing to Research Team (path: {' -> '.join(decision_path)})")
     logger.start_timer("supervisor_research")
     
     research_result = research_app.invoke(state)
     
     # Extract decision path and tools from research result
-    decision_path = research_result.get("decision_path", "rag")
+    research_decision_path = research_result.get("decision_path", "rag")
     used_tools = research_result.get("used_tools", [])
+    
+    # Update decision path with research result
+    decision_path.append(research_decision_path)
     
     logger.end_timer("supervisor_research",
                     research_notes_count=len(research_result.get("research_notes", [])),
                     tool_calls_count=len(research_result.get("tool_calls", [])),
-                    decision_path=decision_path)
+                    decision_path=" -> ".join(decision_path))
     
-    logger.info("Supervisor: Routing to Writing Team", decision_path=decision_path)
+    logger.info("Supervisor: Routing to Writing Team", decision_path=" -> ".join(decision_path))
     logger.start_timer("supervisor_writing")
     
     writing_result = writing_app.invoke(research_result)
     
-    logger.end_timer("supervisor_writing",
-                    answer_length=len(writing_result.get("answer", "")))
+    # Extract structured response (get all fields from writing_result)
+    answer = writing_result.get("answer", "")
+    claims = writing_result.get("claims", [])
+    sources_used = writing_result.get("sources_used", [])
+    confidence = writing_result.get("confidence", 0.5)
+    confidence_reason = writing_result.get("confidence_reason", "")
     
-    # EXPLICIT AGENT STATE: Ensure all fields are in final result
+    # POLICY ENGINE: Post-generation policy check (confidence-based refusal)
+    post_policy_result = check_post_generation_policy(
+        confidence=confidence,
+        confidence_threshold=confidence_threshold,
+        refuse_on_low_confidence=refuse_on_low_confidence,
+        trace_id=trace_id
+    )
+    
+    # Enforce post-generation policy if enabled
+    if post_policy_result.get("refuse") and post_policy_result.get("reason"):
+        logger.warning("Post-generation policy violation", 
+                      reason=post_policy_result.get("reason"),
+                      confidence=confidence,
+                      threshold=confidence_threshold)
+        decision_path.append("policy_refuse")
+        answer = "I don't know."
+        claims = []
+        sources_used = []
+        confidence_reason = post_policy_result.get("reason") or confidence_reason
+    
+    logger.end_timer("supervisor_writing",
+                    answer_length=len(answer),
+                    claims_count=len(claims),
+                    confidence=confidence)
+    
+    # ENTERPRISE-GRADE: Structured final response
+    # Merge writing_result first, then add supervisor fields (ensures all fields are included)
     final_result = {
-        **writing_result,
+        **writing_result,  # Include all fields from writing_result (answer, claims, sources_used, confidence, etc.)
         "trace_id": trace_id,
-        "decision_path": decision_path,
+        "decision_path": decision_path,  # List of decision points (includes policy checks)
         "used_tools": used_tools,
-        "metadata_filters": state.get("metadata_filters")
+        "metadata_filters": metadata_filters,
+        "intent": intent,
+        "confidence_requirement": confidence_requirement
     }
     
+    # Update answer/claims if post-generation policy refused
+    if post_policy_result.get("refuse"):
+        final_result["answer"] = answer
+        final_result["claims"] = claims
+        final_result["sources_used"] = sources_used
+        final_result["confidence_reason"] = confidence_reason
+    
+    # Ensure required fields exist (defensive)
+    if "answer" not in final_result:
+        final_result["answer"] = answer
+    if "claims" not in final_result:
+        final_result["claims"] = claims
+    if "sources_used" not in final_result:
+        final_result["sources_used"] = sources_used
+    if "confidence" not in final_result:
+        final_result["confidence"] = confidence
+    if "confidence_reason" not in final_result:
+        final_result["confidence_reason"] = confidence_reason
+    
     logger.info("Supervisor: Complete", 
-                final_answer_length=len(writing_result.get("answer", "")),
-                decision_path=decision_path)
+                final_answer_length=len(answer),
+                claims_count=len(claims),
+                sources_count=len(sources_used),
+                confidence=confidence,
+                decision_path=" -> ".join(decision_path),
+                intent=intent)
     
     return final_result
 

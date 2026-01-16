@@ -48,7 +48,17 @@ def store_chunks(chunks: List[Tuple[str, Dict[str, Any]]]):
     
     Args:
         chunks: List of (chunk_text, metadata) tuples
+    
+    Raises:
+        RuntimeError: If READ_ONLY_MODE is enabled (production security)
     """
+    # READ_ONLY_MODE: Block ingestion in production
+    from rag.config import READ_ONLY_MODE
+    
+    if READ_ONLY_MODE:
+        logger.error("SECURITY: Ingestion blocked - READ_ONLY_MODE enabled")
+        raise RuntimeError("Ingestion is disabled in READ_ONLY_MODE. This is a security feature.")
+    
     # Handle backward compatibility (plain list of strings)
     if chunks and isinstance(chunks[0], str):
         logger.warning("Legacy format detected: storing chunks without metadata")

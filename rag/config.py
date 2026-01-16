@@ -83,6 +83,9 @@ LOG_TRACE_IDS = _get_config("observability.log_trace_ids", True)
 LOG_LATENCIES = _get_config("observability.log_latencies", True)
 LOG_TOKEN_USAGE = _get_config("observability.log_token_usage", True)
 
+# Production Read-Only Mode (Enterprise Security)
+READ_ONLY_MODE = os.getenv("READ_ONLY_MODE", str(_get_config("production.read_only_mode", False))).lower() == "true"
+
 # Auto-fix OLLAMA_URL if needed
 if not OLLAMA_URL.endswith("/api/generate"):
     OLLAMA_URL = OLLAMA_URL.rstrip("/") + "/api/generate"

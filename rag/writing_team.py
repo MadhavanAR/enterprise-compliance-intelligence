@@ -1,6 +1,8 @@
 from langgraph.graph import StateGraph, END
 from rag.state import AgentState
 from rag.generate import generate_answer
+from rag.generate_grounded import generate_grounded_answer
+from rag.confidence import estimate_confidence
 from rag.logger import get_logger
 
 def note_taker(state: AgentState):
@@ -10,17 +12,53 @@ def copy_editor(state: AgentState):
     return {"research_notes": state["research_notes"]}
 
 def dopeness_editor(state: AgentState):
+    """
+    Generate grounded answer with structured claims + citations.
+    Uses grounded answer generation for enterprise-grade output.
+    """
     trace_id = state.get("trace_id")
     logger = get_logger(trace_id)
     
     logger.start_timer("writing")
-    answer = generate_answer(
+    
+    # Use grounded answer generation (enterprise-grade)
+    grounded_result = generate_grounded_answer(
         state["question"],
         state["research_notes"],
         trace_id=trace_id
     )
-    logger.end_timer("writing", answer_length=len(answer))
-    return {"answer": answer}
+    
+    # Extract values
+    answer = grounded_result.get("answer", "")
+    claims = grounded_result.get("claims", [])
+    sources_used = grounded_result.get("sources_used", [])
+    
+    # Estimate confidence
+    metadata_match = state.get("metadata_filters") is not None and len(sources_used) > 0
+    rerank_score_avg = state.get("rerank_score_avg")  # Can be added to state by retrieval
+    
+    confidence_result = estimate_confidence(
+        claims_count=len(claims),
+        sources_used=len(sources_used),
+        metadata_match=metadata_match,
+        rerank_score_avg=rerank_score_avg,
+        trace_id=trace_id
+    )
+    
+    logger.end_timer("writing", 
+                    answer_length=len(answer),
+                    claims_count=len(claims),
+                    sources_count=len(sources_used),
+                    confidence=confidence_result.get("confidence"))
+    
+    # Return structured response (enterprise-grade)
+    return {
+        "answer": answer,
+        "claims": claims,
+        "sources_used": sources_used,
+        "confidence": confidence_result.get("confidence", 0.5),
+        "confidence_reason": confidence_result.get("confidence_reason", "")
+    }
 
 def build_writing_graph():
     graph = StateGraph(AgentState)

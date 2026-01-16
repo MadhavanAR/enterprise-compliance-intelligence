@@ -60,3 +60,7 @@ mcp:
   tools:
     - roll_dice
     - web_search
+
+# Production Settings (Enterprise Security)
+production:
+  read_only_mode: false  # Set to true to disable ingestion and config mutations

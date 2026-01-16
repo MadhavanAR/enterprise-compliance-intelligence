@@ -6,7 +6,9 @@ load_dotenv()
 app = build_supervisor()
 
 result = app.invoke({
-    "question": "Did the Edmonton Oilers win the 2025 Stanley Cup?"
+    # "question": "Explain BM25 keyword search in RAG systems"
+    # "question": "Why do birds sing?"
+    "question": "What did Da Vinci say about solitude?"
 })
 
 print("\nFINAL ANSWER\n")

@@ -1,0 +1,24 @@
+# Enterprise Policy Engine Configuration
+# Policies are evaluated BEFORE retrieval (no LLM calls)
+# All policies must be deterministic and fast
+
+policies:
+  # Intent-based policies (block/refuse specific query intents)
+  blocked_intents:
+    - "medical_advice"
+    - "financial_advice"
+    - "legal_advice"
+    # Add more as needed
+  
+  # Confidence thresholds (higher = stricter)
+  confidence_thresholds:
+    high_risk_intents: 0.9  # Require 90% confidence for high-risk queries
+    medium_risk_intents: 0.7  # Require 70% confidence for medium-risk queries
+    default: 0.5  # Default threshold
+  
+  # Metadata filter enforcement
+  strict_metadata_match: true  # Require exact metadata match (no fallback)
+  
+  # Refusal policies
+  refuse_on_zero_docs: true  # Always refuse if no documents retrieved
+  refuse_on_low_confidence: false  # Can be enabled to refuse low-confidence answers

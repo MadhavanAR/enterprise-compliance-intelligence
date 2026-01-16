@@ -59,6 +59,14 @@ def load_and_chunk(
 
 
 def main():
+    # READ_ONLY_MODE: Block ingestion in production
+    from rag.config import READ_ONLY_MODE
+    from rag.logger import logger as root_logger
+    
+    if READ_ONLY_MODE:
+        root_logger.error("SECURITY: Ingestion blocked - READ_ONLY_MODE enabled")
+        raise RuntimeError("Ingestion is disabled in READ_ONLY_MODE. This is a security feature.")
+    
     chunks_with_metadata = load_and_chunk()
     # Extract just chunks for backward compatibility with store_chunks
     chunks = [chunk for chunk, _ in chunks_with_metadata]
