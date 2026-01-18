@@ -18,11 +18,11 @@ st.set_page_config(
 # Custom CSS for dark theme with grain texture
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800&display=swap');
     
     /* Global styles - Dark theme */
     * {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+        font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
     }
     
     html, body {
@@ -30,22 +30,44 @@ st.markdown("""
         padding: 0;
         overflow: hidden;
     }
+
+    /* Ensure background covers ALL Streamlit root containers (prevents bottom band) */
+    html, body,
+    div[data-testid="stAppViewContainer"],
+    div[data-testid="stAppViewContainer"] > .main {
+        height: 100% !important;
+        background-color: #0a0a0a !important;
+    }
+
+    /* Apply the SAME background image once (prevents seams / color shifts) */
+    div[data-testid="stAppViewContainer"],
+    div[data-testid="stAppViewContainer"] > .main {
+        background-image:
+            radial-gradient(circle at 20% 30%, rgba(139, 92, 246, 0.15) 0%, transparent 50%),
+            radial-gradient(circle at 80% 70%, rgba(59, 130, 246, 0.15) 0%, transparent 50%),
+            radial-gradient(circle at 50% 50%, rgba(236, 72, 153, 0.1) 0%, transparent 50%),
+            url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.4'/%3E%3C/svg%3E") !important;
+        background-repeat: repeat !important;
+        background-attachment: fixed !important;
+        background-position: center center !important;
+    }
+
+    /* Bottom container should be transparent so the same background shows through */
+    div[data-testid="stBottomBlockContainer"] {
+        background: transparent !important;
+        padding: 0 !important;
+        margin: 0 !important;
+    }
     
     .main {
         padding: 0;
         margin: 0;
-        background: #0a0a0a;
         height: 100vh;
         overflow: hidden;
     }
     
     .stApp {
-        background: #0a0a0a;
-        background-image: 
-            radial-gradient(circle at 20% 30%, rgba(139, 92, 246, 0.15) 0%, transparent 50%),
-            radial-gradient(circle at 80% 70%, rgba(59, 130, 246, 0.15) 0%, transparent 50%),
-            radial-gradient(circle at 50% 50%, rgba(236, 72, 153, 0.1) 0%, transparent 50%),
-            url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.4'/%3E%3C/svg%3E");
+        background: transparent;
     }
     
     .block-container {
@@ -55,7 +77,7 @@ st.markdown("""
         height: 100vh;
         display: flex;
         flex-direction: column;
-        justify-content: center;
+        justify-content: flex-start;
         align-items: center;
         overflow: hidden;
     }
@@ -72,7 +94,7 @@ st.markdown("""
         max-width: 768px;
         width: 100%;
         margin: 0 auto;
-        padding: 1rem 1.5rem 100px 1.5rem;
+        padding: 1rem 1.5rem 160px 1.5rem;
         display: flex;
         flex-direction: column;
         flex: 1;
@@ -83,106 +105,162 @@ st.markdown("""
     
     @media (max-width: 768px) {
         .chat-container {
-            padding-bottom: 90px;
+            padding-bottom: 150px;
         }
     }
     
     @media (max-width: 480px) {
         .chat-container {
-            padding-bottom: 85px;
+            padding-bottom: 140px;
         }
     }
     
-    /* When messages exist, move input to bottom */
-    .has-messages.input-wrapper {
-        position: fixed;
-        bottom: 0;
-        top: auto;
-        left: 0;
-        right: 0;
-        transform: none;
-        background: #0a0a0a;
-        border-top: 1px solid rgba(255, 255, 255, 0.1);
-        padding: 1.25rem 0;
-        width: 100vw;
-        max-width: 100%;
+    /* Empty screen wrapper (prevents overlap) */
+    .empty-screen {
+        width: 100%;
+        min-height: calc(100vh - 120px); /* leaves room for fixed input (closer gap) */
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-start;
+        align-items: center;
+        position: relative;
+        padding: 1.75rem 1rem 0 1rem; /* top aligned (more breathing room) */
+        box-sizing: border-box;
     }
-    
-    .has-messages .input-inner {
-        max-width: 500px;
-        padding: 0 3rem;
-    }
-    
-    @media (max-width: 768px) {
-        .has-messages .input-inner {
-            max-width: 85%;
-            padding: 0 2rem;
-        }
-    }
-    
-    @media (max-width: 480px) {
-        .has-messages .input-inner {
-            max-width: 90%;
-            padding: 0 1.5rem;
-        }
-    }
-    
-    /* Empty state - Grok-style positioning (heading at 1/3 from top) */
-    .empty-state {
+
+    /* Hero (empty state) */
+    .hero {
         display: flex;
         flex-direction: column;
         align-items: center;
-        justify-content: flex-start;
+        justify-content: center;
         width: 100%;
-        max-width: 768px;
+        max-width: 980px;
         text-align: center;
-        padding: 0;
+        padding: 0 1rem;
         box-sizing: border-box;
-        position: absolute;
-        top: 30%;
-        left: 50%;
-        transform: translate(-50%, -30%);
-        margin: 0;
+        position: relative;
+        margin: 0 auto; /* top aligned, no negative offsets */
     }
     
     @media (max-width: 768px) {
-        .empty-state {
-            top: 25%;
-            transform: translate(-50%, -25%);
+        .hero {
             max-width: 100%;
-            padding: 0 1rem;
+            margin-top: 0;
         }
     }
     
     @media (max-width: 480px) {
-        .empty-state {
-            top: 20%;
-            transform: translate(-50%, -20%);
+        .hero {
             padding: 0 0.75rem;
+            margin-top: 0;
         }
     }
     
-    .empty-state-icon {
-        font-size: 3rem;
-        margin-bottom: 1.5rem;
+    .hero-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.35rem 0.75rem;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        color: #d1d5db;
+        font-size: 0.85rem;
+        font-weight: 500;
+        backdrop-filter: blur(12px);
+        margin-bottom: 1.25rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 100%;
+    }
+    
+    .hero-title {
+        font-size: 2.1rem;
+        font-weight: 800;
+        color: #ffffff;
+        letter-spacing: -0.03em;
+        line-height: 1.15;
+        margin: 0 0 1rem 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 100%;
+    }
+    
+    .hero-title .grad {
         background: linear-gradient(135deg, #8b5cf6 0%, #3b82f6 50%, #ec4899 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         background-clip: text;
-        line-height: 1;
     }
     
-    .empty-state-title {
-        font-size: 2rem;
-        font-weight: 700;
-        color: #ffffff;
-        margin-bottom: 2rem;
-        font-family: 'Inter', sans-serif;
-        letter-spacing: -0.02em;
+    .hero-subtitle {
+        color: #9ca3af;
+        font-size: 1rem;
+        line-height: 1.6;
+        max-width: 760px;
+        margin: 0 0 0.6rem 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
     
-    .empty-state-subtitle {
-        display: none;
+    /* If subtitle is empty, remove its spacing entirely */
+    .hero-subtitle:empty {
+        display: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    
+    .hero-hints {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.65rem;
+        width: 100%;
+        max-width: 920px;
+        margin-top: 1.4rem;
+        align-items: stretch;
+    }
+
+    @media (max-width: 768px) {
+        .hero-hints {
+            grid-template-columns: 1fr;
+        }
+    }
+    
+    .hint {
+        text-align: left;
+        padding: 1.15rem 1.15rem;
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.10);
+        color: #e5e7eb;
+        backdrop-filter: blur(10px);
+    }
+    
+    .hint-title {
+        font-size: 0.9rem;
+        font-weight: 650;
+        margin-bottom: 0.5rem;
+        color: #f3f4f6;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    
+    .hint-desc {
+        font-size: 0.85rem;
+        color: #9ca3af;
+        margin: 0;
+        line-height: 1.5;
+        /* Make long descriptions visible (no single-line truncation) */
+        white-space: normal;
+        overflow: hidden;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
     }
     
     @media (max-width: 768px) {
@@ -213,17 +291,76 @@ st.markdown("""
     .message-wrapper {
         display: flex;
         width: 100%;
-        max-width: 768px;
+        max-width: 920px;
         margin: 0 auto 1rem auto;
+        padding: 0 1.25rem; /* left/right breathing room */
         box-sizing: border-box;
+    }
+
+    @media (max-width: 768px) {
+        .message-wrapper {
+            padding: 0 1rem;
+        }
+    }
+
+    @media (max-width: 480px) {
+        .message-wrapper {
+            padding: 0 0.75rem;
+        }
+    }
+
+    /* Keep expander aligned with message width + padding */
+    div[data-testid="stExpander"] {
+        max-width: 920px;
+        margin: 0 auto 1rem auto;
+        padding: 0 1.25rem;
+        box-sizing: border-box;
+        position: relative;
+        z-index: 200;
+    }
+
+    /* Make expander match bubble width (centered) */
+    div[data-testid="stExpander"] {
+        width: 100% !important;
+        max-width: 75% !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
+    }
+
+    @media (max-width: 768px) {
+        div[data-testid="stExpander"] {
+            max-width: 92% !important;
+        }
+    }
+
+    /* Fix expander header arrow + title overlap */
+    div[data-testid="stExpander"] summary {
+        text-align: left !important;
+    }
+
+    div[data-testid="stExpander"] summary > div {
+        justify-content: flex-start !important;
+        gap: 0.5rem !important;
+    }
+
+    @media (max-width: 768px) {
+        div[data-testid="stExpander"] {
+            padding: 0 1rem;
+        }
+    }
+
+    @media (max-width: 480px) {
+        div[data-testid="stExpander"] {
+            padding: 0 0.75rem;
+        }
     }
     
     .message-wrapper.user {
-        justify-content: flex-end;
+        justify-content: center;
     }
     
     .message-wrapper.assistant {
-        justify-content: flex-start;
+        justify-content: center;
     }
     
     /* Message bubbles */
@@ -235,9 +372,11 @@ st.markdown("""
         margin: 0;
         max-width: 75%;
         min-width: 80px;
+        text-align: center;
+        width: fit-content;
         box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
         animation: slideInRight 0.3s ease-out;
-        font-family: 'Inter', sans-serif;
+        font-family: 'Montserrat', sans-serif;
         font-weight: 400;
         line-height: 1.5;
         border: 1px solid rgba(255, 255, 255, 0.1);
@@ -251,11 +390,13 @@ st.markdown("""
         margin: 0;
         max-width: 75%;
         min-width: 80px;
+        text-align: center;
+        width: fit-content;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
         animation: slideInLeft 0.3s ease-out;
         line-height: 1.6;
         word-wrap: break-word;
-        font-family: 'Inter', sans-serif;
+        font-family: 'Montserrat', sans-serif;
         font-weight: 400;
         border: 1px solid rgba(255, 255, 255, 0.1);
         backdrop-filter: blur(10px);
@@ -295,31 +436,20 @@ st.markdown("""
         }
     }
     
-    /* Input area */
-    .input-container {
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        background: white;
-        border-top: 1px solid #e5e7eb;
-        padding: 1.5rem;
-        box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
-    }
-    
-    /* Input container - Grok-style positioning (below heading, centered) */
+    /* Input bar (always bottom, centered, half-width) */
     .input-wrapper {
         position: fixed;
-        bottom: auto;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        width: 100%;
-        max-width: 500px;
+        bottom: 1.25rem;
+        top: auto;
+        left: 0;
+        right: 0;
+        transform: none;
+        width: 90vw;
+        max-width: 640px;
         background: transparent;
         border: none;
-        padding: 0 3rem;
-        z-index: 100;
+        padding: 0 1.25rem;
+        z-index: 10000;
         display: flex;
         justify-content: center;
         align-items: center;
@@ -342,14 +472,19 @@ st.markdown("""
     }
     
     .input-inner {
-        max-width: 500px;
+        max-width: 640px;
         width: 100%;
         margin: 0 auto;
-        padding: 0 3rem;
+        padding: 0.65rem;
         display: flex;
         align-items: center;
         gap: 0.5rem;
         box-sizing: border-box;
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.10);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        backdrop-filter: blur(18px);
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
     }
     
     @media (max-width: 768px) {
@@ -366,21 +501,41 @@ st.markdown("""
         }
     }
     
+    /* Shadcn-like input styling for Streamlit text_input (robust selectors) */
+    .stTextInput input {
+        color: #e5e7eb !important;
+    }
+
+    /* BaseWeb input container (Streamlit uses BaseWeb under the hood) */
+    .stTextInput div[data-baseweb="input"] > div {
+        background: rgba(10, 10, 10, 0.45) !important;
+        border: 1px solid rgba(255, 255, 255, 0.22) !important;
+        border-radius: 10px !important;
+        box-shadow: none !important;
+    }
+
+    .stTextInput div[data-baseweb="input"] input {
+        background: transparent !important;
+        border: none !important;
+        padding: 0.7rem 0.9rem !important;
+        min-height: 44px !important;
+        font-size: 0.95rem !important;
+        line-height: 1.4 !important;
+    }
+
+    /* Fallback selector (older Streamlit DOM) */
     .stTextInput > div > div > input {
-        border-radius: 24px;
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        padding: 1.1rem 1.5rem;
-        min-height: 52px;
-        font-size: 1rem;
-        font-family: 'Inter', sans-serif;
-        transition: all 0.2s;
-        background: rgba(255, 255, 255, 0.1);
-        color: #e5e7eb;
-        backdrop-filter: blur(20px);
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
-        width: 100%;
+        border-radius: 10px !important;
+        border: 1px solid rgba(255, 255, 255, 0.22) !important;
+        padding: 0.7rem 0.9rem !important;
+        min-height: 44px !important;
+        font-size: 0.95rem !important;
+        transition: box-shadow 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+        background: rgba(10, 10, 10, 0.45) !important;
+        color: #e5e7eb !important;
+        width: 100% !important;
         box-sizing: border-box;
-        line-height: 1.5;
+        line-height: 1.4 !important;
     }
     
     @media (max-width: 768px) {
@@ -399,15 +554,75 @@ st.markdown("""
         }
     }
     
+    .stTextInput div[data-baseweb="input"] > div:focus-within {
+        border-color: rgba(139, 92, 246, 0.6) !important;
+        box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.22) !important;
+    }
+
     .stTextInput > div > div > input:focus {
-        border-color: rgba(139, 92, 246, 0.5);
-        box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2), 0 4px 16px rgba(0, 0, 0, 0.3);
+        border-color: rgba(139, 92, 246, 0.6) !important;
+        box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.22) !important;
         outline: none;
-        background: rgba(255, 255, 255, 0.1);
+        background: rgba(10, 10, 10, 0.55) !important;
+    }
+
+    /* Shadcn-like styling for Streamlit chat_input */
+    div[data-testid="stChatInput"] {
+        max-width: 640px;
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    /* Single-box chat input: outer container is the box */
+    div[data-testid="stChatInput"] div[data-baseweb="textarea"] > div {
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+    }
+
+    /* Remove any extra inner wrappers that can look like a second box */
+    div[data-testid="stChatInput"] div[data-baseweb="textarea"] > div > div {
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        outline: none !important;
+    }
+
+    div[data-testid="stChatInput"] textarea {
+        /* Remove inner box look: keep only the outer container */
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        outline: none !important;
+        color: #e5e7eb !important;
+        font-size: 0.95rem !important;
+        line-height: 1.4 !important;
+    }
+
+    /* Prevent any default focus ring / red focus border on the inner textarea */
+    div[data-testid="stChatInput"] textarea:focus,
+    div[data-testid="stChatInput"] textarea:focus-visible {
+        outline: none !important;
+        border: none !important;
+        box-shadow: none !important;
+    }
+
+    div[data-testid="stChatInput"] div[data-baseweb="textarea"] > div:focus-within {
+        /* focus ring applied to outer container (in the inline style below) */
+        border-color: transparent !important;
+        box-shadow: none !important;
+    }
+
+    /* Also neutralize focus styling on inner BaseWeb wrappers (can show red line) */
+    div[data-testid="stChatInput"] div[data-baseweb="textarea"] *:focus,
+    div[data-testid="stChatInput"] div[data-baseweb="textarea"] *:focus-visible {
+        outline: none !important;
+        box-shadow: none !important;
+        border-color: transparent !important;
     }
     
     .stTextInput > div > div > input::placeholder {
-        color: #6b7280;
+        color: rgba(156, 163, 175, 0.85);
     }
     
     /* Send button inside input */
@@ -443,8 +658,8 @@ st.markdown("""
         background: linear-gradient(135deg, #8b5cf6 0%, #3b82f6 100%);
         color: white;
         border: none;
-        border-radius: 16px;
-        padding: 0.5rem;
+        border-radius: 14px;
+        padding: 0.55rem;
         font-weight: 600;
         font-size: 1rem;
         font-family: 'Inter', sans-serif;
@@ -612,6 +827,11 @@ st.markdown("""
         color: #e5e7eb;
         border: 1px solid rgba(255, 255, 255, 0.2);
         backdrop-filter: blur(10px);
+        padding: 0.35rem 0.65rem !important;
+        min-width: auto !important;
+        width: auto !important;
+        height: auto !important;
+        border-radius: 12px !important;
     }
     
     .stButton > button[kind="secondary"]:hover {
@@ -686,7 +906,7 @@ def _format_answer_with_citations(answer: str) -> str:
     return formatted
 
 def _format_answer_with_metadata(answer: str, metadata: dict) -> str:
-    """Format answer with citations and 'Why this answer?' panel."""
+    """Format answer with citations (no raw HTML panels)."""
     import re
     
     def replace_citation(match):
@@ -695,54 +915,11 @@ def _format_answer_with_metadata(answer: str, metadata: dict) -> str:
     
     formatted_answer = re.sub(r'\[Doc (\d+)\]', replace_citation, answer)
     formatted_answer = formatted_answer.replace('\n', '<br>')
-    
-    why_panel = _build_why_panel(metadata)
-    
-    return f'''
-    <div class="assistant-message">
-        {formatted_answer}
-        {why_panel}
-    </div>
-    '''
+    return f'<div class="assistant-message">{formatted_answer}</div>'
 
 def _build_why_panel(metadata: dict) -> str:
-    """Build collapsible 'Why this answer?' debug panel."""
-    research_notes = metadata.get("research_notes", [])
-    tool_calls = metadata.get("tool_calls", [])
-    decision_path = metadata.get("decision_path", "rag")
-    
-    if not research_notes and not tool_calls:
-        return ""
-    
-    tool_info = ""
-    if tool_calls:
-        tool = tool_calls[0].get("tool", "")
-        tool_info = f"<strong>Tool:</strong> {tool}<br>"
-    
-    decision_info = f"<strong>Decision Path:</strong> {decision_path}<br>"
-    docs_info = f"<strong>Documents Used:</strong> {len(research_notes)}<br>"
-    
-    sources_html = ""
-    if research_notes:
-        sources_html = "<strong>Sources:</strong><ul style='margin: 0.5rem 0; padding-left: 1.5rem;'>"
-        for i, note in enumerate(research_notes[:3], 1):
-            preview = note[:100] + "..." if len(note) > 100 else note
-            sources_html += f"<li style='color: #9ca3af; font-size: 0.85rem; margin: 0.25rem 0;'>{preview}</li>"
-        sources_html += "</ul>"
-    
-    return f'''
-    <details style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid rgba(255,255,255,0.1);">
-        <summary style="cursor: pointer; color: #9ca3af; font-size: 0.85rem; user-select: none;">
-            💡 Why this answer?
-        </summary>
-        <div style="margin-top: 0.75rem; padding: 0.75rem; background: rgba(139, 92, 246, 0.1); border-radius: 8px; font-size: 0.85rem; color: #d1d5db;">
-            {decision_info}
-            {tool_info}
-            {docs_info}
-            {sources_html}
-        </div>
-    </details>
-    '''
+    """Deprecated: previously returned raw HTML. Kept for compatibility."""
+    return ""
 
 def _format_error_ux(error_msg: str) -> str:
     """Format error messages with better UX."""
@@ -775,110 +952,136 @@ if "messages" not in st.session_state:
 if "processing" not in st.session_state:
     st.session_state.processing = False
 
-# Minimal header - just clear button (positioned absolutely, responsive)
-st.markdown("""
-<style>
-.clear-btn-container {
-        position: fixed;
-        top: 1rem;
-        right: 1rem;
-        z-index: 200;
-    }
-    
-    @media (max-width: 768px) {
-        .clear-btn-container {
-            top: 0.75rem;
-            right: 0.75rem;
-        }
-    }
-    
-    @media (max-width: 480px) {
-        .clear-btn-container {
-            top: 0.5rem;
-            right: 0.5rem;
-        }
-    }
-</style>
-<div class="clear-btn-container">
-""", unsafe_allow_html=True)
+# Top-right: “New chat”
+top_left, top_right = st.columns([0.9, 0.1])
+with top_right:
+    if st.button("New chat", help="Clear chat", key="clear_btn", type="secondary", use_container_width=False):
+        st.session_state.messages = []
+        st.session_state.processing = False
+        st.rerun()
 
-if st.button("🗑️", help="Clear chat", key="clear_btn"):
-    st.session_state.messages = []
-    st.session_state.processing = False
-    st.rerun()
-
-st.markdown("</div>", unsafe_allow_html=True)
-
-# Chat container
-st.markdown('<div class="chat-container">', unsafe_allow_html=True)
-
-# Show empty state or messages
+# Show hero (empty) or messages
 if not st.session_state.messages:
+    # Suggested prompts (pure UI convenience)
     st.markdown("""
-    <div class="empty-state">
-        <div class="empty-state-icon">✨</div>
-        <div class="empty-state-title">RAG</div>
+    <div class="empty-screen">
+        <div class="hero">
+            <div class="hero-badge">Enterprise-safe · Deterministic · Auditable</div>
+            <div class="hero-title">Enterprise RAG Engine</div>
+            <div class="hero-subtitle">
+            </div>
+            <div class="hero-hints">
+                <div class="hint">
+                    <div class="hint-title">Try an example</div>
+                    <p class="hint-desc">“Explain BM25 keyword search in RAG systems”</p>
+                </div>
+                <div class="hint">
+                    <div class="hint-title">Ask for an audit trail</div>
+                    <p class="hint-desc">You’ll get claims, sources, and a trace path for compliance review.</p>
+                </div>
+            </div>
+        </div>
     </div>
     """, unsafe_allow_html=True)
 else:
     for message in st.session_state.messages:
-        role_class = "user" if message["role"] == "user" else "assistant"
-        st.markdown(f'<div class="message-wrapper {role_class}">', unsafe_allow_html=True)
-        
-        if message["role"] == "user":
-            st.markdown(f'<div class="user-message">{message["content"]}</div>', unsafe_allow_html=True)
-        else:
-            # Check if message has metadata for "Why this answer?" panel
-            if "metadata" in message:
-                content = _format_answer_with_metadata(message["content"], message["metadata"])
-                st.markdown(content, unsafe_allow_html=True)
+        # IMPORTANT: Keep all elements (bubble + expander) in the same centered column.
+        # Mixing HTML wrapper divs with Streamlit widgets causes misalignment.
+        _, mid, _ = st.columns([1, 3, 1])
+        with mid:
+            if message["role"] == "user":
+                st.markdown(f'<div class="user-message">{message["content"]}</div>', unsafe_allow_html=True)
             else:
-                # Legacy format (no metadata)
-                content = _format_answer_with_citations(message["content"])
-                st.markdown(f'<div class="assistant-message">{content}</div>', unsafe_allow_html=True)
-        
-        st.markdown('</div>', unsafe_allow_html=True)
+                if "metadata" in message:
+                    st.markdown(
+                        _format_answer_with_metadata(message["content"], message["metadata"]),
+                        unsafe_allow_html=True,
+                    )
 
-# Close chat container
-st.markdown("</div>", unsafe_allow_html=True)
+                    # Space between answer bubble and expander
+                    st.markdown("<div style='height: 0.6rem;'></div>", unsafe_allow_html=True)
 
-# Fixed input area - Grok-style: centered when no messages, bottom when messages exist
-input_wrapper_class = "input-wrapper has-messages" if st.session_state.messages else "input-wrapper"
-st.markdown(f'<div class="{input_wrapper_class}">', unsafe_allow_html=True)
-st.markdown('<div class="input-inner">', unsafe_allow_html=True)
+                    meta = message.get("metadata") or {}
+                    research_notes = meta.get("research_notes", []) or []
+                    tool_calls = meta.get("tool_calls", []) or []
+                    decision_path = meta.get("decision_path", "rag")
+                    tool_name = tool_calls[0].get("tool") if tool_calls else None
 
-# Centered input with send button - responsive columns
-input_col1, input_col2 = st.columns([12, 1], gap="small")
+                    with st.expander("Why this answer?"):
+                        # Key stats aligned in a single row
+                        c1, c2, c3 = st.columns([1, 1, 1])
+                        with c1:
+                            st.markdown(f"**Decision path**  \n`{decision_path}`")
+                        with c2:
+                            st.markdown(f"**Documents used**  \n`{len(research_notes)}`")
+                        with c3:
+                            st.markdown(f"**Tool**  \n`{tool_name or '—'}`")
 
-with input_col1:
-    query = st.text_input(
-        "Message",
-        value="",
-        placeholder="Ask anything...",
-        label_visibility="collapsed",
-        key="query_input"
-    )
+                        if research_notes:
+                            st.markdown("**Source previews**:")
+                            for i, note in enumerate(research_notes[:3], 1):
+                                preview = note[:180] + ("..." if len(note) > 180 else "")
+                                st.caption(f"{i}. {preview}")
+                else:
+                    content = _format_answer_with_citations(message["content"])
+                    st.markdown(f'<div class="assistant-message">{content}</div>', unsafe_allow_html=True)
 
-with input_col2:
-    submit_button = st.button("➤", type="primary", use_container_width=True, help="Send")
+            # Space between message blocks
+            st.markdown("<div style='height: 0.75rem;'></div>", unsafe_allow_html=True)
 
-st.markdown("</div>", unsafe_allow_html=True)
-st.markdown("</div>", unsafe_allow_html=True)
+#
+# INPUT
+# Use a single native chat input (always visible).
+# We dynamically position it closer to the hero on the empty screen.
+#
 
-# Process query
-if submit_button and query and not st.session_state.processing:
+# Empty state: lift input up to sit right under the tiles (responsive)
+chat_bottom = "clamp(220px, 26vh, 360px)" if not st.session_state.messages else "1.25rem"
+chat_z = "10000" if not st.session_state.messages else "50"
+st.markdown(
+    f"""
+    <style>
+      div[data-testid="stChatInput"] {{
+        position: fixed !important;
+        left: 50% !important;
+        transform: translateX(-50%) !important;
+        bottom: {chat_bottom} !important;
+        width: min(640px, 90vw) !important;
+        z-index: {chat_z} !important;
+        background: rgba(10, 10, 10, 0.55) !important;
+        border: 1px solid rgba(255, 255, 255, 0.22) !important;
+        border-radius: 14px !important;
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35) !important;
+        backdrop-filter: blur(18px) !important;
+        padding: 0.35rem 0.4rem !important;
+      }}
+
+      div[data-testid="stChatInput"]:focus-within {{
+        border-color: rgba(139, 92, 246, 0.6) !important;
+        box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.22), 0 12px 30px rgba(0, 0, 0, 0.35) !important;
+      }}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+prompt = st.chat_input("Ask a grounded question (sources required)…")
+
+if prompt and not st.session_state.processing:
     st.session_state.processing = True
-    
-    # Add user message
-    st.session_state.messages.append({"role": "user", "content": query})
+    st.session_state.messages.append({"role": "user", "content": prompt})
     st.rerun()
-    
+
 elif st.session_state.messages and st.session_state.messages[-1]["role"] == "user" and st.session_state.processing:
     # Process the last user message with streaming
     user_query = st.session_state.messages[-1]["content"]
-    
-    status_placeholder = st.empty()
-    answer_placeholder = st.empty()
+
+    # Center streaming UI in the same column as messages
+    _, mid, _ = st.columns([1, 3, 1])
+    with mid:
+        status_placeholder = st.empty()
+        answer_placeholder = st.empty()
+        why_placeholder = st.empty()
     
     try:
         # Initialize answer state
@@ -934,13 +1137,30 @@ elif st.session_state.messages and st.session_state.messages[-1]["role"] == "use
                     unsafe_allow_html=True
                 )
                 
-                # Format answer with citations and "Why this answer?" panel
-                formatted_content = _format_answer_with_metadata(
-                    final_answer,
-                    st.session_state.metadata
+                # Final answer bubble
+                answer_placeholder.markdown(
+                    _format_answer_with_metadata(final_answer, st.session_state.metadata),
+                    unsafe_allow_html=True
                 )
-                
-                answer_placeholder.markdown(formatted_content, unsafe_allow_html=True)
+
+                # Native expander (no raw HTML tags)
+                meta = st.session_state.metadata or {}
+                research_notes = meta.get("research_notes", []) or []
+                tool_calls = meta.get("tool_calls", []) or []
+                decision_path = meta.get("decision_path", "rag")
+                tool_name = tool_calls[0].get("tool") if tool_calls else None
+
+                with why_placeholder.container():
+                    with st.expander("Why this answer?"):
+                        st.markdown(f"**Decision path**: `{decision_path}`")
+                        if tool_name:
+                            st.markdown(f"**Tool**: `{tool_name}`")
+                        st.markdown(f"**Documents used**: `{len(research_notes)}`")
+                        if research_notes:
+                            st.markdown("**Source previews**:")
+                            for i, note in enumerate(research_notes[:3], 1):
+                                preview = note[:180] + ("..." if len(note) > 180 else "")
+                                st.caption(f"{i}. {preview}")
                 
                 # Store final message
                 st.session_state.messages.append({
@@ -957,6 +1177,7 @@ elif st.session_state.messages and st.session_state.messages[-1]["role"] == "use
                 # Clear status after brief delay
                 time.sleep(0.5)
                 status_placeholder.empty()
+                why_placeholder.empty()
                 st.rerun()
         
     except Exception as e:
@@ -965,6 +1186,7 @@ elif st.session_state.messages and st.session_state.messages[-1]["role"] == "use
         st.session_state.processing = False
         status_placeholder.empty()
         answer_placeholder.empty()
+        why_placeholder.empty()
         
         # Cleanup
         if "current_answer" in st.session_state:
@@ -974,5 +1196,5 @@ elif st.session_state.messages and st.session_state.messages[-1]["role"] == "use
         
         st.rerun()
 
-elif submit_button and not query:
-    pass  # Silent, no warning needed
+else:
+    pass  # No-op
