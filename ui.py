@@ -24,11 +24,79 @@ st.markdown("""
     * {
         font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
     }
+
+    /* IMPORTANT: Don’t override icon fonts (prevents "arrow_drop_down" text showing) */
+    .material-icons,
+    .material-icons-outlined,
+    .material-icons-round,
+    .material-icons-sharp,
+    .material-icons-two-tone,
+    span[class*="material-icons"] {
+        font-family: "Material Icons" !important;
+        font-weight: normal !important;
+        font-style: normal !important;
+        letter-spacing: normal !important;
+        text-transform: none !important;
+        display: inline-block !important;
+        white-space: nowrap !important;
+        word-wrap: normal !important;
+        direction: ltr !important;
+        -webkit-font-feature-settings: "liga" !important;
+        -webkit-font-smoothing: antialiased !important;
+    }
+
+    .material-symbols-outlined,
+    .material-symbols-rounded,
+    .material-symbols-sharp,
+    span[class*="material-symbols"] {
+        font-family: "Material Symbols Outlined", "Material Symbols Rounded", "Material Symbols Sharp", "Material Icons" !important;
+        font-weight: normal !important;
+        font-style: normal !important;
+        letter-spacing: normal !important;
+        text-transform: none !important;
+        display: inline-block !important;
+        white-space: nowrap !important;
+        word-wrap: normal !important;
+        direction: ltr !important;
+        -webkit-font-feature-settings: "liga" !important;
+        -webkit-font-smoothing: antialiased !important;
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24 !important;
+    }
+
+    /* Streamlit expander toggle icon (extra-specific) */
+    div[data-testid="stExpander"] summary span,
+    div[data-testid="stExpander"] summary i {
+        font-family: "Material Symbols Outlined", "Material Icons" !important;
+        -webkit-font-feature-settings: "liga" !important;
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24 !important;
+    }
     
     html, body {
         margin: 0;
         padding: 0;
         overflow: hidden;
+    }
+
+    /* Mobile/tablet: allow scrolling and prevent fixed elements overlap */
+    @media (max-width: 768px) {
+        html, body {
+            overflow: auto;
+        }
+        .block-container {
+            height: auto !important;
+            min-height: 100vh !important;
+            overflow-y: auto !important;
+        }
+        /* Reserve space for the fixed chat input */
+        div[data-testid="stAppViewContainer"] > .main {
+            padding-bottom: calc(120px + env(safe-area-inset-bottom)) !important;
+        }
+    }
+
+    @media (max-width: 480px) {
+        div[data-testid="stAppViewContainer"] > .main {
+            padding-bottom: calc(140px + env(safe-area-inset-bottom)) !important;
+        }
     }
 
     /* Ensure background covers ALL Streamlit root containers (prevents bottom band) */
@@ -309,49 +377,86 @@ st.markdown("""
         }
     }
 
-    /* Keep expander aligned with message width + padding */
+    /* Shared content width so all 3 boxes are identical */
+    :root {
+        --content-w-desktop: 75%;
+        --content-w-tablet: 92%;
+        --content-w-mobile: 95%;
+    }
+
+    /* Mobile typography + spacing (desktop unchanged) */
+    @media (max-width: 768px) {
+        .hero-title {
+            font-size: 1.7rem;
+        }
+        .hero-badge {
+            font-size: 0.8rem;
+        }
+        .hero-hints {
+            gap: 0.6rem;
+        }
+        .hint {
+            padding: 0.95rem 1rem;
+        }
+    }
+
+    @media (max-width: 480px) {
+        .hero-title {
+            font-size: 1.45rem;
+        }
+        .hero-hints {
+            gap: 0.55rem;
+        }
+        .hint {
+            padding: 0.9rem 0.95rem;
+        }
+    }
+
+    /* Expander wrapper: no extra padding that changes perceived width */
     div[data-testid="stExpander"] {
-        max-width: 920px;
         margin: 0 auto 1rem auto;
-        padding: 0 1.25rem;
+        padding: 0 !important;
         box-sizing: border-box;
         position: relative;
         z-index: 200;
     }
 
-    /* Make expander match bubble width (centered) */
-    div[data-testid="stExpander"] {
-        width: 100% !important;
-        max-width: 75% !important;
-        margin-left: auto !important;
-        margin-right: auto !important;
+    /* Remove Streamlit's icon text like "_arrow_right/_arrow_down" and draw our own caret */
+    div[data-testid="stExpander"] details > summary::-webkit-details-marker {
+        display: none !important;
+    }
+    div[data-testid="stExpander"] details > summary::marker {
+        content: "" !important;
+    }
+    /* Streamlit usually renders the toggle icon as a direct <span> child of <summary> */
+    div[data-testid="stExpander"] details > summary > span {
+        display: none !important;
+    }
+    div[data-testid="stExpander"] details > summary {
+        position: relative;
+        padding-left: 1.1rem !important;
+    }
+    div[data-testid="stExpander"] details > summary::before {
+        content: "▸";
+        position: absolute;
+        left: 0.25rem;
+        top: 50%;
+        transform: translateY(-50%);
+        color: rgba(229, 231, 235, 0.85);
+        font-size: 0.95rem;
+        line-height: 1;
+    }
+    div[data-testid="stExpander"] details[open] > summary::before {
+        content: "▾";
     }
 
-    @media (max-width: 768px) {
-        div[data-testid="stExpander"] {
-            max-width: 92% !important;
-        }
-    }
-
-    /* Fix expander header arrow + title overlap */
-    div[data-testid="stExpander"] summary {
-        text-align: left !important;
-    }
-
-    div[data-testid="stExpander"] summary > div {
-        justify-content: flex-start !important;
-        gap: 0.5rem !important;
-    }
-
-    @media (max-width: 768px) {
-        div[data-testid="stExpander"] {
-            padding: 0 1rem;
-        }
-    }
-
+    /* Mobile: ensure the expander header never overlaps */
     @media (max-width: 480px) {
-        div[data-testid="stExpander"] {
-            padding: 0 0.75rem;
+        div[data-testid="stExpander"] details > summary {
+            padding-left: 1.35rem !important;
+        }
+        div[data-testid="stExpander"] details > summary::before {
+            left: 0.35rem;
         }
     }
     
@@ -370,10 +475,12 @@ st.markdown("""
         padding: 0.9rem 1.2rem;
         border-radius: 16px 16px 4px 16px;
         margin: 0;
-        max-width: 75%;
+        max-width: var(--content-w-desktop);
         min-width: 80px;
-        text-align: center;
-        width: fit-content;
+        text-align: left;
+        width: var(--content-w-desktop);
+        margin-left: auto;
+        margin-right: auto;
         box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
         animation: slideInRight 0.3s ease-out;
         font-family: 'Montserrat', sans-serif;
@@ -388,10 +495,12 @@ st.markdown("""
         padding: 1rem 1.3rem;
         border-radius: 16px 16px 16px 4px;
         margin: 0;
-        max-width: 75%;
+        max-width: var(--content-w-desktop);
         min-width: 80px;
-        text-align: center;
-        width: fit-content;
+        text-align: left;
+        width: var(--content-w-desktop);
+        margin-left: auto;
+        margin-right: auto;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
         animation: slideInLeft 0.3s ease-out;
         line-height: 1.6;
@@ -400,6 +509,33 @@ st.markdown("""
         font-weight: 400;
         border: 1px solid rgba(255, 255, 255, 0.1);
         backdrop-filter: blur(10px);
+    }
+
+    /* Make the visible expander (<details>) match bubble width exactly */
+    div[data-testid="stExpander"] > details {
+        width: var(--content-w-desktop) !important;
+        max-width: var(--content-w-desktop) !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
+        box-sizing: border-box;
+    }
+
+    @media (max-width: 768px) {
+        .user-message,
+        .assistant-message,
+        div[data-testid="stExpander"] > details {
+            width: var(--content-w-tablet) !important;
+            max-width: var(--content-w-tablet) !important;
+        }
+    }
+
+    @media (max-width: 480px) {
+        .user-message,
+        .assistant-message,
+        div[data-testid="stExpander"] > details {
+            width: var(--content-w-mobile) !important;
+            max-width: var(--content-w-mobile) !important;
+        }
     }
     
     .assistant-message p {
@@ -838,6 +974,23 @@ st.markdown("""
         background: rgba(255, 255, 255, 0.15);
         transform: translateY(-1px);
     }
+
+    /* Mobile: keep "New chat" pinned top-right */
+    @media (max-width: 768px) {
+        .stButton > button[kind="secondary"] {
+            position: fixed !important;
+            top: 0.75rem !important;
+            right: 0.75rem !important;
+            z-index: 10001 !important;
+        }
+    }
+
+    @media (max-width: 480px) {
+        .stButton > button[kind="secondary"] {
+            top: 0.6rem !important;
+            right: 0.6rem !important;
+        }
+    }
     
     /* Loading animation */
     .loading-dots {
@@ -1059,6 +1212,20 @@ st.markdown(
       div[data-testid="stChatInput"]:focus-within {{
         border-color: rgba(139, 92, 246, 0.6) !important;
         box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.22), 0 12px 30px rgba(0, 0, 0, 0.35) !important;
+      }}
+
+      /* Mobile/tablet: keep chat input from overlapping content */
+      @media (max-width: 768px) {{
+        div[data-testid="stChatInput"] {{
+          width: min(94vw, 640px) !important;
+        }}
+      }}
+
+      @media (max-width: 480px) {{
+        div[data-testid="stChatInput"] {{
+          width: 94vw !important;
+          bottom: calc(0.9rem + env(safe-area-inset-bottom)) !important;
+        }}
       }}
     </style>
     """,
