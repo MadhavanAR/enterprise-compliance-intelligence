@@ -1,14 +1,12 @@
 from collections import Counter
 from qdrant_client import QdrantClient
 from qdrant_client.models import SparseVector, Filter, FieldCondition, MatchValue
-from qdrant_client.http import models
 from rag.embeddings import embed_texts
 from rag.store import COLLECTION_NAME
-from rag.rerank import rerank
+from rag.rerank import rerank, rerank_indices
 from rag.config import QDRANT_URL
-from rag.logger import logger
-from typing import Optional, Dict, Any, List
-from rag.metadata import format_metadata_filter
+from rag.logger import get_logger
+from typing import Optional, Dict, Any, List, TypedDict, Literal
 
 client = QdrantClient(url=QDRANT_URL)
 
@@ -19,11 +17,117 @@ def to_sparse(text: str):
         values=list(counts.values())
     )
 
+class RetrievedChunk(TypedDict, total=False):
+    """Retrieved chunk with text + metadata for audit UX."""
+    qdrant_id: int
+    score: float
+    text: str
+    author: str
+    source: str
+    document_id: str
+    vendor: str
+    document_type: str
+    url: str
+    jurisdiction: str
+    version: str
+
+def search_docs(
+    query: str,
+    top_k: int = 5,
+    use_rerank: bool = True,
+    metadata_filters: Optional[Dict[str, Any]] = None,
+    trace_id: Optional[str] = None,
+) -> List[RetrievedChunk]:
+    """
+    Search with strict metadata enforcement.
+
+    Returns metadata-preserving chunks for enterprise audit UX.
+    """
+    logger = get_logger(trace_id)
+    logger.info("Starting retrieval", query_preview=query[:80], top_k=top_k, metadata_filters=metadata_filters)
+
+    # Build Qdrant filter from metadata
+    query_filter = None
+    if metadata_filters:
+        filter_conditions = [
+            FieldCondition(key=str(key), match=MatchValue(value=value))
+            for key, value in metadata_filters.items()
+        ]
+        if filter_conditions:
+            query_filter = Filter(must=filter_conditions)
+
+    dense_vector = embed_texts([query])[0]
+    sparse_vector = to_sparse(query)
+
+    CANDIDATES = top_k * 3
+
+    dense_res = client.query_points(
+        collection_name=COLLECTION_NAME,
+        query=dense_vector,
+        using="dense",
+        limit=CANDIDATES,
+        with_payload=True,
+        query_filter=query_filter,
+    ).points
+
+    sparse_res = client.query_points(
+        collection_name=COLLECTION_NAME,
+        query=sparse_vector,
+        using="sparse",
+        limit=CANDIDATES,
+        with_payload=True,
+        query_filter=query_filter,
+    ).points
+
+    merged: Dict[int, RetrievedChunk] = {}
+
+    def _upsert(point, score: float):
+        payload = point.payload or {}
+        existing = merged.get(point.id)
+        if existing:
+            existing["score"] = float(existing.get("score", 0.0)) + float(score)
+            return
+        merged[point.id] = {
+            "qdrant_id": int(point.id),
+            "score": float(score),
+            "text": payload.get("text", "") or "",
+            # best-effort metadata (may not exist for legacy ingests)
+            "author": payload.get("author", ""),
+            "source": payload.get("source", ""),
+            "document_id": payload.get("document_id", ""),
+            "vendor": payload.get("vendor", ""),
+            "document_type": payload.get("document_type", ""),
+            "url": payload.get("url", ""),
+            "jurisdiction": payload.get("jurisdiction", ""),
+            "version": payload.get("version", ""),
+        }
+
+    for r in dense_res:
+        _upsert(r, r.score)
+    for r in sparse_res:
+        _upsert(r, r.score)
+
+    ranked = sorted(merged.values(), key=lambda x: float(x.get("score", 0.0)), reverse=True)
+    candidates = [d for d in ranked[:CANDIDATES] if (d.get("text") or "").strip()]
+
+    if metadata_filters and len(candidates) == 0:
+        logger.warning("Metadata filter returned zero documents", metadata_filters=metadata_filters)
+        return []
+
+    if not use_rerank:
+        return candidates[:top_k]
+
+    texts = [d["text"] for d in candidates]
+    idxs = rerank_indices(query, texts, top_k=top_k)
+    reranked = [candidates[i] for i in idxs if 0 <= i < len(candidates)]
+    return reranked
+
 def search(
     query: str, 
     top_k: int = 5, 
     use_rerank: bool = True,
-    metadata_filters: Optional[Dict[str, Any]] = None
+    metadata_filters: Optional[Dict[str, Any]] = None,
+    trace_id: Optional[str] = None,
 ) -> List[str]:
     """
     Search with strict metadata enforcement.
@@ -37,150 +141,11 @@ def search(
     Returns:
         List of document texts (empty list if no matches and metadata filters applied)
     """
-    logger.info(f"Starting retrieval for query: {query[:50]}...")
-    
-    # Build Qdrant filter from metadata
-    query_filter = None
-    if metadata_filters:
-        filter_conditions = []
-        for key, value in metadata_filters.items():
-            filter_conditions.append(
-                FieldCondition(
-                    key=key,
-                    match=MatchValue(value=value)
-                )
-            )
-        if filter_conditions:
-            query_filter = Filter(must=filter_conditions)
-        logger.info(f"Metadata filters applied: {metadata_filters}")
-    
-    dense_vector = embed_texts([query])[0]
-    sparse_vector = to_sparse(query)
-
-    # Intentionally retrieve more candidates to simulate noisy retrieval
-    CANDIDATES = top_k * 3
-    logger.debug(f"Retrieving {CANDIDATES} candidates (top_k={top_k})")
-
-    # Apply metadata filter to both queries
-    dense_res = client.query_points(
-        collection_name=COLLECTION_NAME,
-        query=dense_vector,
-        using="dense",
-        limit=CANDIDATES,
-        with_payload=True,
-        query_filter=query_filter  # STRICT METADATA ENFORCEMENT
-    ).points
-
-    sparse_res = client.query_points(
-        collection_name=COLLECTION_NAME,
-        query=sparse_vector,
-        using="sparse",
-        limit=CANDIDATES,
-        with_payload=True,
-        query_filter=query_filter  # STRICT METADATA ENFORCEMENT
-    ).points
-
-    merged = {}
-
-    for r in dense_res:
-        merged[r.id] = {
-            "score": r.score,
-            "text": r.payload.get("text", ""),
-        }
-
-    for r in sparse_res:
-        if r.id in merged:
-            merged[r.id]["score"] += r.score
-        else:
-            merged[r.id] = {
-                "score": r.score,
-                "text": r.payload.get("text", ""),
-            }
-
-    ranked = sorted(
-        merged.values(),
-        key=lambda x: x["score"],
-        reverse=True
+    docs = search_docs(
+        query=query,
+        top_k=top_k,
+        use_rerank=use_rerank,
+        metadata_filters=metadata_filters,
+        trace_id=trace_id,
     )
-
-    # Get all candidates (intentionally noisy)
-    docs = [r["text"] for r in ranked[:CANDIDATES] if r["text"]]
-    
-    # STRICT METADATA ENFORCEMENT: If metadata filter returns zero docs, log and return empty
-    if metadata_filters and len(docs) == 0:
-        logger.warning(f"Metadata filter returned zero documents: {metadata_filters}")
-        return []  # Hard refusal: empty list triggers "I don't know"
-    
-    logger.info(f"Retrieved {len(docs)} candidate documents")
-
-    if use_rerank:
-        logger.info("Applying reranking")
-        # Reranker selects best top_k from larger candidate pool
-        reranked = rerank(query, docs, top_k=top_k)
-        logger.info(f"Reranking complete, returning {len(reranked)} documents")
-        return reranked
-
-    # Without rerank, just return first top_k
-    logger.info(f"Returning top {top_k} documents without reranking")
-    return docs[:top_k]
-    logger.info(f"Starting retrieval for query: {query[:50]}...")
-    dense_vector = embed_texts([query])[0]
-    sparse_vector = to_sparse(query)
-
-    # Intentionally retrieve more candidates to simulate noisy retrieval
-    CANDIDATES = top_k * 3
-    logger.debug(f"Retrieving {CANDIDATES} candidates (top_k={top_k})")
-
-    dense_res = client.query_points(
-        collection_name=COLLECTION_NAME,
-        query=dense_vector,
-        using="dense",
-        limit=CANDIDATES,
-        with_payload=True,
-    ).points
-
-    sparse_res = client.query_points(
-        collection_name=COLLECTION_NAME,
-        query=sparse_vector,
-        using="sparse",
-        limit=CANDIDATES,
-        with_payload=True,
-    ).points
-
-    merged = {}
-
-    for r in dense_res:
-        merged[r.id] = {
-            "score": r.score,
-            "text": r.payload["text"],
-        }
-
-    for r in sparse_res:
-        if r.id in merged:
-            merged[r.id]["score"] += r.score
-        else:
-            merged[r.id] = {
-                "score": r.score,
-                "text": r.payload["text"],
-            }
-
-    ranked = sorted(
-        merged.values(),
-        key=lambda x: x["score"],
-        reverse=True
-    )
-
-    # Get all candidates (intentionally noisy)
-    docs = [r["text"] for r in ranked[:CANDIDATES]]
-    logger.info(f"Retrieved {len(docs)} candidate documents")
-
-    if use_rerank:
-        logger.info("Applying reranking")
-        # Reranker selects best top_k from larger candidate pool
-        reranked = rerank(query, docs, top_k=top_k)
-        logger.info(f"Reranking complete, returning {len(reranked)} documents")
-        return reranked
-
-    # Without rerank, just return first top_k
-    logger.info(f"Returning top {top_k} documents without reranking")
-    return docs[:top_k]
+    return [d["text"] for d in docs if (d.get("text") or "").strip()]

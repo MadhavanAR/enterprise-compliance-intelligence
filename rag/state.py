@@ -18,6 +18,7 @@ class AgentState(TypedDict, total=False):
     decision_path: Optional[str]  # "rag" | "web_search" | "roll_dice" | List[str]
     used_tools: List[str]  # List of tools invoked
     metadata_filters: Optional[Dict[str, Any]]  # Metadata filters applied
+    documents: List[Dict[str, Any]]  # Retrieved docs with metadata (for audit UX)
     # Enterprise-grade grounded answer fields
     claims: List[Dict[str, str]]  # Structured claims with source_doc
     sources_used: List[str]  # List of source document IDs

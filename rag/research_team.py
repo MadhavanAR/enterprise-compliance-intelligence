@@ -1,7 +1,7 @@
 import asyncio
 from langgraph.graph import StateGraph, END
 from rag.state import AgentState
-from rag.retrieve import search  # Use sync version (async wrapper available)
+from rag.retrieve import search, search_docs  # metadata-preserving retrieval
 from rag.mcp_client import call_tool  # Keep sync for now (can be async later)
 from rag.logger import get_logger
 
@@ -33,6 +33,7 @@ def research_node(state: AgentState) -> dict:
     question = state["question"]
     metadata_filters = state.get("metadata_filters")  # Extract metadata filters
     notes = []
+    documents = []
     tool_calls = state.get("tool_calls", [])
     used_tools = []
     decision_path = "rag"  # Default
@@ -92,12 +93,12 @@ def research_node(state: AgentState) -> dict:
         decision_path = "rag"
         logger.info(f"Decision: Using RAG retrieval (path: {decision_path}, filters: {metadata_filters})")
         logger.start_timer("rag_retrieval")
-        # STRICT METADATA ENFORCEMENT: Pass metadata_filters to search
-        docs = search(question, metadata_filters=metadata_filters)
-        # HARD REFUSAL: If metadata filter returns zero docs, notes will be empty
-        # This will trigger "I don't know" in generate_answer()
-        notes.extend(docs)
-        logger.end_timer("rag_retrieval", docs_retrieved=len(docs))
+        # STRICT METADATA ENFORCEMENT + METADATA PRESERVATION
+        retrieved = search_docs(question, metadata_filters=metadata_filters, trace_id=trace_id)
+        documents = retrieved
+        docs_text = [d.get("text", "") for d in retrieved if isinstance(d, dict)]
+        notes.extend([t for t in docs_text if isinstance(t, str) and t.strip()])
+        logger.end_timer("rag_retrieval", docs_retrieved=len(notes))
         
         # Log if metadata filter resulted in zero docs
         if metadata_filters and len(docs) == 0:
@@ -109,6 +110,7 @@ def research_node(state: AgentState) -> dict:
     return {
         "research_notes": notes,
         "context": notes,  # Keep context in sync
+        "documents": documents,
         "tool_calls": tool_calls,
         "trace_id": trace_id,  # Propagate trace_id
         "decision_path": decision_path,  # Explicit decision path

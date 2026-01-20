@@ -1,0 +1,11 @@
+AWS Compliance Programs
+
+Amazon Web Services (AWS) maintains compliance programs that help customers
+satisfy regulatory requirements such as SOC 1, SOC 2, SOC 3, ISO 27001,
+ISO 27017, ISO 27018, GDPR, and HIPAA.
+
+AWS provides customers with access to compliance reports through AWS Artifact.
+These reports include independent audit attestations and certifications.
+
+AWS complies with global data protection laws and offers Data Processing
+Addendums (DPA) to meet GDPR obligations.

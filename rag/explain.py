@@ -53,9 +53,11 @@ def explain_response(result: Dict[str, Any], trace_id: Optional[str] = None) -> 
     confidence = result.get("confidence", 0.0)
     confidence_reason = result.get("confidence_reason", "")
     
-    # Extract documents_used from research_notes or context
-    documents_used = []
-    if result.get("research_notes"):
+    # Extract documents_used (prefer structured docs with metadata)
+    documents_used: List[Any] = []
+    if result.get("documents"):
+        documents_used = result.get("documents", [])
+    elif result.get("research_notes"):
         documents_used = result.get("research_notes", [])
     elif result.get("context"):
         documents_used = result.get("context", [])
@@ -78,7 +80,7 @@ def explain_response(result: Dict[str, Any], trace_id: Optional[str] = None) -> 
         "intent": intent,
         "tools_used": used_tools,
         "metadata_filters": metadata_filters,
-        "documents_used": [doc[:200] + "..." if len(doc) > 200 else doc for doc in documents_used],  # Truncate long docs
+        "documents_used": documents_used,
         "claims": claims,
         "sources_used": sources_used,
         "confidence": float(confidence) if confidence else 0.0,

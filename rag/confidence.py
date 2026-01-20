@@ -5,7 +5,7 @@ Confidence Scoring: Risk level estimation
 """
 import json
 import re
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, TypedDict, cast
 from pathlib import Path
 import requests
 from rag.config import (
@@ -34,6 +34,40 @@ CONFIDENCE_SCHEMA = {
     "confidence": 0.0,
     "confidence_reason": "string"
 }
+
+class ConfidenceResult(TypedDict):
+    confidence: float
+    confidence_reason: str
+
+
+def _fail_closed(reason: str) -> ConfidenceResult:
+    # Enterprise-safe: if estimator fails, confidence must be 0.0.
+    return {"confidence": 0.0, "confidence_reason": reason}
+
+
+def _extract_json(raw_output: str) -> Optional[str]:
+    m = re.search(r'```json\s*(\{.*?\})\s*```', raw_output, re.DOTALL | re.IGNORECASE)
+    if m:
+        return m.group(1)
+    m = re.search(r'\{.*\}', raw_output, re.DOTALL)
+    if m:
+        return m.group(0)
+    return None
+
+
+def _validate_confidence(obj: Any) -> Optional[ConfidenceResult]:
+    if not isinstance(obj, dict):
+        return None
+    raw_c = obj.get("confidence", 0.0)
+    try:
+        c = float(raw_c)
+    except Exception:
+        return None
+    c = max(0.0, min(1.0, c))
+    r = obj.get("confidence_reason", "")
+    if not isinstance(r, str):
+        r = "estimator_invalid_reason"
+    return {"confidence": c, "confidence_reason": r}
 
 
 def estimate_confidence(
@@ -110,49 +144,31 @@ Return ONLY valid JSON, no other text."""
         result = response.json()
         raw_output = result.get("response", "").strip()
         
-        # Extract JSON from response
-        json_match = re.search(r'```json\s*(\{.*?\})\s*```', raw_output, re.DOTALL)
-        if json_match:
-            json_str = json_match.group(1)
-        else:
-            json_match = re.search(r'\{.*\}', raw_output, re.DOTALL)
-            json_str = json_match.group(0) if json_match else raw_output
+        json_str = _extract_json(raw_output) or raw_output
+        try:
+            parsed = json.loads(json_str)
+        except json.JSONDecodeError:
+            logger.error("Confidence estimator JSON parse failed", raw_output=raw_output[:200])
+            return _fail_closed("estimator_failed")
+
+        validated = _validate_confidence(parsed)
+        if not validated:
+            logger.error("Confidence estimator returned invalid shape", raw_output=raw_output[:200])
+            return _fail_closed("estimator_failed")
         
-        # Parse JSON
-        confidence_result = json.loads(json_str)
+        result = validated
         
-        # Validate and clamp confidence
-        confidence = float(confidence_result.get("confidence", 0.5))
-        confidence = max(0.0, min(1.0, confidence))  # Clamp to [0, 1]
-        
-        confidence_reason = confidence_result.get("confidence_reason", "Confidence estimated from input factors.")
-        
-        result = {
-            "confidence": confidence,
-            "confidence_reason": confidence_reason
-        }
-        
-        logger.end_timer("confidence_estimation", confidence=confidence)
-        logger.info("Confidence estimation complete", confidence=confidence)
+        logger.end_timer("confidence_estimation", confidence=result["confidence"])
+        logger.info("Confidence estimation complete", confidence=result["confidence"])
         
         return result
         
     except (json.JSONDecodeError, ValueError, KeyError) as e:
-        logger.error("Failed to parse confidence JSON", error=str(e), raw_output=raw_output[:200])
-        # Fallback: rule-based confidence
-        confidence = _rule_based_confidence(claims_count, sources_used, metadata_match, rerank_score_avg)
-        return {
-            "confidence": confidence,
-            "confidence_reason": f"Rule-based fallback: {claims_count} claims, {sources_used} sources, metadata_match={metadata_match}"
-        }
+        logger.error("Failed to parse confidence JSON", error=str(e), raw_output=(raw_output or "")[:200])
+        return _fail_closed("estimator_failed")
     except Exception as e:
         logger.error("Confidence estimation failed", error=str(e))
-        # Fallback: rule-based confidence
-        confidence = _rule_based_confidence(claims_count, sources_used, metadata_match, rerank_score_avg)
-        return {
-            "confidence": confidence,
-            "confidence_reason": "Rule-based fallback due to estimation error"
-        }
+        return _fail_closed("estimator_failed")
 
 
 def _rule_based_confidence(
