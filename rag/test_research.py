@@ -1,9 +1,4 @@
-from rag.research_team import build_research_graph
+from rag.engine import run_enterprise_query
 
-app = build_research_graph()
-
-result = app.invoke({
-    "question": "What is BM25 in RAG systems?"
-})
-
-print(result["research_notes"])
+result = run_enterprise_query("What is BM25 in RAG systems?")
+print(result["answer"])

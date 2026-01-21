@@ -12,13 +12,10 @@ Demonstrates:
 from dotenv import load_dotenv
 load_dotenv()
 
-from rag.supervisor import build_supervisor
-from rag.logger import logger
+from rag.engine import run_enterprise_query
 
 def demo_multi_agent():
     """Demonstrate multi-agent workflow."""
-    app = build_supervisor()
-    
     print("=" * 70)
     print("DEMO 3: MULTI-AGENT WORKFLOW")
     print("=" * 70)
@@ -32,18 +29,10 @@ def demo_multi_agent():
     print("Question: Explain BM25 keyword search in RAG systems")
     print()
     
-    result1 = app.invoke({
-        "question": "Explain BM25 keyword search in RAG systems"
-    })
+    result1 = run_enterprise_query("Explain BM25 keyword search in RAG systems")
     
     print("🔬 Research Team Output:")
-    print(f"   • Documents retrieved: {len(result1.get('research_notes', []))}")
-    print(f"   • Tool calls: {len(result1.get('tool_calls', []))}")
-    if result1.get('tool_calls'):
-        for tool_call in result1.get('tool_calls', []):
-            print(f"     - {tool_call.get('tool', 'unknown')}: {tool_call}")
-    else:
-        print("     - RAG retrieval only (no MCP tools)")
+    print(f"   • Documents retrieved: {len(result1.get('documents', []) or [])}")
     print()
     
     print("✍️  Writing Team Output:")
@@ -58,24 +47,10 @@ def demo_multi_agent():
     print("Question: Can you roll the damage for a fourth-level fireball?")
     print()
     
-    result2 = app.invoke({
-        "question": "Can you roll the damage for a fourth-level fireball?"
-    })
+    result2 = run_enterprise_query("Can you roll the damage for a fourth-level fireball?")
     
     print("🔬 Research Team Output:")
-    print(f"   • Documents retrieved: {len(result2.get('research_notes', []))}")
-    print(f"   • Tool calls: {len(result2.get('tool_calls', []))}")
-    if result2.get('tool_calls'):
-        for tool_call in result2.get('tool_calls', []):
-            tool_name = tool_call.get('tool', 'unknown')
-            print(f"     - Tool: {tool_name}")
-            if tool_name == 'roll_dice':
-                print(f"       Sides: {tool_call.get('sides', 'N/A')}")
-                print(f"       Count: {tool_call.get('count', 'N/A')}")
-            elif tool_name == 'web_search':
-                print(f"       Query: {tool_call.get('query', 'N/A')}")
-    else:
-        print("     - No MCP tools called (fallback to RAG)")
+    print(f"   • Documents retrieved: {len(result2.get('documents', []) or [])}")
     print()
     
     print("✍️  Writing Team Output:")
@@ -90,19 +65,10 @@ def demo_multi_agent():
     print("Question: Did the Edmonton Oilers win the 2025 Stanley Cup?")
     print()
     
-    result3 = app.invoke({
-        "question": "Did the Edmonton Oilers win the 2025 Stanley Cup?"
-    })
+    result3 = run_enterprise_query("Did the Edmonton Oilers win the 2025 Stanley Cup?")
     
     print("🔬 Research Team Output:")
-    print(f"   • Documents retrieved: {len(result3.get('research_notes', []))}")
-    print(f"   • Tool calls: {len(result3.get('tool_calls', []))}")
-    if result3.get('tool_calls'):
-        for tool_call in result3.get('tool_calls', []):
-            tool_name = tool_call.get('tool', 'unknown')
-            print(f"     - Tool: {tool_name}")
-            if tool_name == 'web_search':
-                print(f"       Query: {tool_call.get('query', 'N/A')}")
+    print(f"   • Documents retrieved: {len(result3.get('documents', []) or [])}")
     print()
     
     print("✍️  Writing Team Output:")

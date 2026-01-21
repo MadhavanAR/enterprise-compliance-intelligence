@@ -1119,24 +1119,60 @@ if not st.session_state.messages:
     st.markdown("""
     <div class="empty-screen">
         <div class="hero">
-            <div class="hero-badge">Enterprise-safe · Deterministic · Auditable</div>
-            <div class="hero-title">Enterprise RAG Engine</div>
+            <div class="hero-badge">Deterministic · Auditable · Zero-Hallucination</div>
+            <div class="hero-title">Enterprise Compliance Intelligence</div>
             <div class="hero-subtitle">
+                Ask questions that require verified sources. Every answer includes evidence, confidence, and an audit trail.
             </div>
             <div class="hero-hints">
                 <div class="hint">
-                    <div class="hint-title">Try an example</div>
-                    <p class="hint-desc">“Explain BM25 keyword search in RAG systems”</p>
+                    <div class="hint-title">Try a verified question</div>
+                    <p class="hint-desc">Ask about certifications, standards, controls, and evidence.</p>
                 </div>
                 <div class="hint">
-                    <div class="hint-title">Ask for an audit trail</div>
-                    <p class="hint-desc">You’ll get claims, sources, and a trace path for compliance review.</p>
+                    <div class="hint-title">How to verify</div>
+                    <p class="hint-desc">Review claims → sources, decision path, and confidence. If evidence is missing, it refuses.</p>
                 </div>
             </div>
         </div>
     </div>
     """, unsafe_allow_html=True)
+
+    # Golden prompts (click-to-run)
+    st.markdown("<div style='height: 0.75rem;'></div>", unsafe_allow_html=True)
+    _, mid, _ = st.columns([1, 3, 1])
+    with mid:
+        st.markdown("**Try a verified question**")
+        b1, b2, b3 = st.columns(3)
+        prompt_1 = "What compliance certifications does AWS have?"
+        prompt_2 = "Is AWS compliant with GDPR?"
+        prompt_3 = "What security standards does AWS follow?"
+
+        clicked = None
+        if b1.button("AWS certifications", use_container_width=True):
+            clicked = prompt_1
+        if b2.button("GDPR compliance", use_container_width=True):
+            clicked = prompt_2
+        if b3.button("Security standards", use_container_width=True):
+            clicked = prompt_3
+
+        if clicked and not st.session_state.processing:
+            st.session_state.processing = True
+            st.session_state.messages.append({"role": "user", "content": clicked})
+            st.rerun()
+
+        st.caption("⚠️ Opinion, speculation, or unsupported questions will be refused by design.")
 else:
+    # Always-visible verification block (trust signaling)
+    _, mid, _ = st.columns([1, 3, 1])
+    with mid:
+        st.markdown("**How to know this answer is correct**")
+        st.caption(
+            "This system answers only what can be proven from retrieved sources. "
+            "Each response includes evidence (sources), claim-to-source mapping, a decision path, and a confidence score. "
+            "If evidence is missing or policy blocks the request, it refuses."
+        )
+
     for message in st.session_state.messages:
         # IMPORTANT: Keep all elements (bubble + expander) in the same centered column.
         # Mixing HTML wrapper divs with Streamlit widgets causes misalignment.
@@ -1155,26 +1191,54 @@ else:
                     st.markdown("<div style='height: 0.6rem;'></div>", unsafe_allow_html=True)
 
                     meta = message.get("metadata") or {}
-                    research_notes = meta.get("research_notes", []) or []
-                    tool_calls = meta.get("tool_calls", []) or []
                     decision_path = meta.get("decision_path", "rag")
-                    tool_name = tool_calls[0].get("tool") if tool_calls else None
+                    documents = meta.get("documents", []) or []
+                    claims = meta.get("claims", []) or []
+                    sources_used = meta.get("sources_used", []) or []
+                    confidence = meta.get("confidence", 0.0)
+                    confidence_reason = meta.get("confidence_reason", "")
+                    refusal_reason = meta.get("refusal_reason")
 
-                    with st.expander("Why this answer?"):
-                        # Key stats aligned in a single row
-                        c1, c2, c3 = st.columns([1, 1, 1])
-                        with c1:
-                            st.markdown(f"**Decision path**  \n`{decision_path}`")
-                        with c2:
-                            st.markdown(f"**Documents used**  \n`{len(research_notes)}`")
-                        with c3:
-                            st.markdown(f"**Tool**  \n`{tool_name or '—'}`")
+                    with st.expander("🔍 Audit & Evidence"):
+                        st.markdown(f"**Decision path**  \n`{decision_path}`")
 
-                        if research_notes:
-                            st.markdown("**Source previews**:")
-                            for i, note in enumerate(research_notes[:3], 1):
-                                preview = note[:180] + ("..." if len(note) > 180 else "")
-                                st.caption(f"{i}. {preview}")
+                        if refusal_reason:
+                            st.markdown(f"**Refusal reason**  \n`{refusal_reason}`")
+
+                        # Claims
+                        st.markdown("**Claims**")
+                        if isinstance(claims, list) and claims:
+                            for c in claims:
+                                if isinstance(c, dict):
+                                    st.markdown(f"- {c.get('text','').strip()}  \n  `source: {c.get('source_doc','')}`")
+                        else:
+                            st.caption("No claims (refusal or insufficient evidence).")
+
+                        # Sources
+                        st.markdown("**Sources**")
+                        if isinstance(documents, list) and documents:
+                            # Render only sources_used (if present), else show first N docs
+                            shown = []
+                            if isinstance(sources_used, list) and sources_used:
+                                for s in sources_used:
+                                    shown.append(s)
+                            for idx, d in enumerate(documents[:6], 1):
+                                if not isinstance(d, dict):
+                                    continue
+                                doc_id = d.get("document_id") or d.get("source") or f"Doc {idx}"
+                                ver = d.get("version")
+                                url = d.get("url")
+                                extra = f" (v{ver})" if ver else ""
+                                line = f"- {doc_id}{extra}"
+                                if url:
+                                    line += f"  \n  `{url}`"
+                                st.markdown(line)
+                        else:
+                            st.caption("No sources (refusal or no retrieval).")
+
+                        # Confidence
+                        st.markdown("**Confidence**")
+                        st.markdown(f"`{confidence:.2f}` — {confidence_reason}")
                 else:
                     content = _format_answer_with_citations(message["content"])
                     st.markdown(f'<div class="assistant-message">{content}</div>', unsafe_allow_html=True)
@@ -1212,6 +1276,19 @@ st.markdown(
       div[data-testid="stChatInput"]:focus-within {{
         border-color: rgba(139, 92, 246, 0.6) !important;
         box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.22), 0 12px 30px rgba(0, 0, 0, 0.35) !important;
+      }}
+
+      /* Refusal education (always visible under the input) */
+      div[data-testid="stChatInput"]::after {{
+        content: "⚠️ Opinion, speculation, or unsupported questions will be refused by design.";
+        display: block;
+        margin-top: 0.35rem;
+        padding: 0 0.35rem;
+        color: rgba(156, 163, 175, 0.95);
+        font-size: 0.8rem;
+        line-height: 1.25;
+        text-align: left;
+        pointer-events: none;
       }}
 
       /* Mobile/tablet: keep chat input from overlapping content */

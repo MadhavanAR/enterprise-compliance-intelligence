@@ -16,7 +16,7 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from rag.supervisor import build_supervisor
+from rag.engine import run_enterprise_query
 from rag.explain import explain_response
 
 
@@ -31,9 +31,6 @@ def demo_hallucination_prevention():
     print("\nEnterprise Value: Prevents hallucination and liability.")
     print("-" * 70)
     
-    # Initialize system
-    app = build_supervisor()
-    
     # Test: Unanswerable question (no context available)
     print("\n1️⃣ TEST: Unanswerable Question")
     print("-" * 70)
@@ -41,10 +38,7 @@ def demo_hallucination_prevention():
     print(f"Query: {query}")
     print("\nExecuting query...")
     
-    result = app.invoke({
-        "question": query,
-        "trace_id": "demo-hallucination-prevention"
-    })
+    result = run_enterprise_query(query, trace_id="demo-hallucination-prevention")
     
     answer = result.get("answer", "")
     print(f"\nAnswer: {answer}")

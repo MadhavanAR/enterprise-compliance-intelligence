@@ -16,7 +16,7 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from rag.supervisor import build_supervisor
+from rag.engine import run_enterprise_query
 from rag.explain import explain_response
 
 
@@ -31,9 +31,6 @@ def demo_confidence_risk():
     print("\nEnterprise Value: Transparent risk assessment for decision-makers.")
     print("-" * 70)
     
-    # Initialize system
-    app = build_supervisor()
-    
     # Test 1: Question with good context (should have higher confidence)
     print("\n1️⃣ TEST 1: Question with Good Context")
     print("-" * 70)
@@ -41,10 +38,7 @@ def demo_confidence_risk():
     print(f"Query: {query}")
     print("\nExecuting query...")
     
-    result1 = app.invoke({
-        "question": query,
-        "trace_id": "demo-confidence-1"
-    })
+    result1 = run_enterprise_query(query, trace_id="demo-confidence-1")
     
     explain1 = explain_response(result1)
     
@@ -62,11 +56,11 @@ def demo_confidence_risk():
     print(f"Metadata Filter: author=Da Vinci")
     print("\nExecuting query...")
     
-    result2 = app.invoke({
-        "question": query2,
-        "metadata_filters": {"author": "Da Vinci"},
-        "trace_id": "demo-confidence-2"
-    })
+    result2 = run_enterprise_query(
+        query2,
+        metadata_filters={"author": "Da Vinci"},
+        trace_id="demo-confidence-2",
+    )
     
     explain2 = explain_response(result2)
     

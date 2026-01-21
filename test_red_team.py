@@ -12,7 +12,7 @@ from typing import List, Dict, Any, Tuple
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from rag.supervisor import build_supervisor
+from rag.engine import run_enterprise_query
 from rag.explain import explain_response
 
 
@@ -77,7 +77,6 @@ def run_red_team_tests() -> Tuple[List[Dict[str, Any]], int, int]:
     Returns:
         (results, passed_count, failed_count)
     """
-    app = build_supervisor()
     results = []
     passed = 0
     failed = 0
@@ -91,11 +90,11 @@ def run_red_team_tests() -> Tuple[List[Dict[str, Any]], int, int]:
         
         try:
             # Execute query
-            result = app.invoke({
-                "question": query,
-                "metadata_filters": metadata_filters,
-                "trace_id": f"red-team-{test_name.lower().replace(' ', '-')}"
-            })
+            result = run_enterprise_query(
+                query,
+                metadata_filters=metadata_filters,
+                trace_id=f"red-team-{test_name.lower().replace(' ', '-')}",
+            )
             
             answer = result.get("answer", "")
             explain = explain_response(result)

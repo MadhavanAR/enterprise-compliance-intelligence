@@ -16,7 +16,7 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from rag.supervisor import build_supervisor
+from rag.engine import run_enterprise_query
 from rag.explain import explain_response
 
 
@@ -31,9 +31,6 @@ def demo_audit_trail():
     print("\nEnterprise Value: Regulatory compliance, legal protection.")
     print("-" * 70)
     
-    # Initialize system
-    app = build_supervisor()
-    
     # Execute a normal query
     print("\n1️⃣ EXECUTING QUERY")
     print("-" * 70)
@@ -41,10 +38,7 @@ def demo_audit_trail():
     print(f"Query: {query}")
     print("\nExecuting query...")
     
-    result = app.invoke({
-        "question": query,
-        "trace_id": "demo-audit-trail"
-    })
+    result = run_enterprise_query(query, trace_id="demo-audit-trail")
     
     trace_id = result.get("trace_id")
     print(f"\nTrace ID: {trace_id}")

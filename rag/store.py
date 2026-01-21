@@ -11,13 +11,13 @@ from qdrant_client.models import (
     MatchValue,
 )
 from rag.embeddings import embed_texts
-from rag.config import QDRANT_URL
+from rag.qdrant import get_qdrant_client
 from rag.logger import logger
 from typing import List, Tuple, Dict, Any, Optional
 
 COLLECTION_NAME = "demo_chunks"
 
-client = QdrantClient(url=QDRANT_URL)
+client = get_qdrant_client()
 
 def create_collection(vector_size):
     logger.info(f"Creating collection '{COLLECTION_NAME}' with vector size {vector_size}")

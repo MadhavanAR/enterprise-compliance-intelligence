@@ -12,12 +12,10 @@ Demonstrates:
 from dotenv import load_dotenv
 load_dotenv()
 
-from rag.supervisor import build_supervisor
+from rag.engine import run_enterprise_query
 
 def demo_internal_docs():
     """Demonstrate internal documentation Q&A."""
-    app = build_supervisor()
-    
     print("=" * 70)
     print("DEMO 1: INTERNAL DOCS Q&A")
     print("=" * 70)
@@ -31,7 +29,7 @@ def demo_internal_docs():
     print(f"Question: {question}")
     print()
     
-    result = app.invoke({"question": question})
+    result = run_enterprise_query(question)
     
     print("Answer:")
     print("-" * 70)
@@ -39,11 +37,9 @@ def demo_internal_docs():
     print()
     print("-" * 70)
     print()
-    print(f"📊 Context used: {len(result.get('research_notes', []))} documents")
-    print(f"🔧 Tools called: {len(result.get('tool_calls', []))}")
-    if result.get('tool_calls'):
-        for tool_call in result.get('tool_calls', []):
-            print(f"   • {tool_call.get('tool', 'unknown')}")
+    print(f"📊 Documents used: {len(result.get('documents', []) or [])}")
+    print(f"🧾 Claims: {len(result.get('claims', []) or [])}")
+    print(f"🔍 Decision path: {result.get('decision_path', '')}")
     print()
     print("✅ Demo complete!")
 

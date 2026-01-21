@@ -12,13 +12,10 @@ Demonstrates:
 from dotenv import load_dotenv
 load_dotenv()
 
-from rag.supervisor import build_supervisor
-from rag.logger import logger
+from rag.engine import run_enterprise_query
 
 def demo_guardrails():
     """Demonstrate guardrails in action."""
-    app = build_supervisor()
-    
     print("=" * 70)
     print("DEMO 2: GUARDRAILS - \"I don't know\" instead of hallucination")
     print("=" * 70)
@@ -30,17 +27,15 @@ def demo_guardrails():
     print("Question: Explain BM25 keyword search in RAG systems")
     print()
     
-    result1 = app.invoke({
-        "question": "Explain BM25 keyword search in RAG systems"
-    })
+    result1 = run_enterprise_query("Explain BM25 keyword search in RAG systems")
     
     print("✅ Answer:", result1.get("answer", "")[:200])
     print()
     
     # Check if answer has citations
-    has_citations = "[Doc" in result1.get("answer", "")
+    has_citations = "Doc " in " ".join(result1.get("sources_used", []) or [])
     print(f"✓ Citations: {'YES' if has_citations else 'NO'}")
-    print(f"✓ Context used: {len(result1.get('research_notes', []))} documents")
+    print(f"✓ Documents used: {len(result1.get('documents', []) or [])} documents")
     print()
     print()
     
@@ -50,9 +45,7 @@ def demo_guardrails():
     print("Question: What is the capital of Mars?")
     print()
     
-    result2 = app.invoke({
-        "question": "What is the capital of Mars?"
-    })
+    result2 = run_enterprise_query("What is the capital of Mars?")
     
     answer2 = result2.get("answer", "")
     print(f"✅ Answer: {answer2[:200]}")
@@ -79,14 +72,12 @@ def demo_guardrails():
     print("Question: What is hybrid retrieval?")
     print()
     
-    result3 = app.invoke({
-        "question": "What is hybrid retrieval?"
-    })
+    result3 = run_enterprise_query("What is hybrid retrieval?")
     
     print("✅ Answer:", result3.get("answer", "")[:200])
     print()
     
-    has_context = len(result3.get("research_notes", [])) > 0
+    has_context = len(result3.get("documents", []) or []) > 0
     print(f"✓ Context found: {'YES' if has_context else 'NO'}")
     print()
     

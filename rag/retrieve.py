@@ -4,11 +4,11 @@ from qdrant_client.models import SparseVector, Filter, FieldCondition, MatchValu
 from rag.embeddings import embed_texts
 from rag.store import COLLECTION_NAME
 from rag.rerank import rerank, rerank_indices
-from rag.config import QDRANT_URL
+from rag.qdrant import get_qdrant_client
 from rag.logger import get_logger
 from typing import Optional, Dict, Any, List, TypedDict, Literal
 
-client = QdrantClient(url=QDRANT_URL)
+client = get_qdrant_client()
 
 def to_sparse(text: str):
     counts = Counter(text.lower().split())
@@ -56,19 +56,28 @@ def search_docs(
         if filter_conditions:
             query_filter = Filter(must=filter_conditions)
 
-    dense_vector = embed_texts([query])[0]
     sparse_vector = to_sparse(query)
 
     CANDIDATES = top_k * 3
 
-    dense_res = client.query_points(
-        collection_name=COLLECTION_NAME,
-        query=dense_vector,
-        using="dense",
-        limit=CANDIDATES,
-        with_payload=True,
-        query_filter=query_filter,
-    ).points
+    dense_res = []
+    try:
+        dense_vector = embed_texts([query], trace_id=trace_id)[0]
+        dense_res = client.query_points(
+            collection_name=COLLECTION_NAME,
+            query=dense_vector,
+            using="dense",
+            limit=CANDIDATES,
+            with_payload=True,
+            query_filter=query_filter,
+        ).points
+    except Exception as e:
+        # Enterprise-safe fallback: still answer only from what we can retrieve/cite.
+        # If dense retrieval is unavailable, continue with sparse-only retrieval.
+        logger.warning(
+            "Dense retrieval unavailable; using sparse-only retrieval",
+            error_type=type(e).__name__,
+        )
 
     sparse_res = client.query_points(
         collection_name=COLLECTION_NAME,
