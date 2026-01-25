@@ -34,6 +34,8 @@ STRICT RULES:
 - If the context does not answer the question, say "I don't know."
 - Every factual claim MUST cite a document ID.
 - Do NOT add explanations, apologies, or meta commentary.
+- Frame statements as document-reported (e.g., "The documentation states that...").
+- Summarize clearly; do not paste long raw text.
 
 Context:
 {context}
@@ -100,6 +102,161 @@ def _safe_json_loads(json_str: str) -> Optional[Dict[str, Any]]:
             return obj if isinstance(obj, dict) else None
         except json.JSONDecodeError:
             return None
+
+
+def _is_capability_question(question: str) -> bool:
+    """
+    Detect binary capability questions that risk over-assertion.
+    
+    Patterns:
+    - "Can I...", "Can you...", "Can we..."
+    - "Does X allow...", "Does X support...", "Does X provide..."
+    - "Is it possible to...", "Is it possible for..."
+    - "Do I have...", "Do users have..."
+    - Questions with "guarantee", "permission", "entitlement"
+    """
+    q_lower = question.lower().strip()
+    
+    capability_patterns = [
+        r'\bcan\s+(i|you|we|one|users?)\b',
+        r'\bdoes\s+\w+\s+(allow|support|provide|enable|permit|guarantee)\b',
+        r'\bis\s+it\s+possible\s+(to|for)',
+        r'\bdo\s+(i|you|we|users?)\s+have\b',
+        r'\b(guarantee|guaranteed|permission|entitlement|entitled)\b',
+    ]
+    
+    return any(re.search(pattern, q_lower) for pattern in capability_patterns)
+
+
+def _has_explicit_guarantee(context_docs: List[str]) -> bool:
+    """
+    Check if context contains explicit guarantee/permission language.
+    
+    Looks for:
+    - "you can", "users can", "customers can"
+    - "allows", "enables", "permits"
+    - "guaranteed", "entitled", "permission"
+    - Procedural language ("download", "access", "retrieve" with clear steps)
+    """
+    context_text = " ".join(context_docs).lower()
+    
+    explicit_patterns = [
+        r'\b(you|users?|customers?)\s+can\s+',
+        r'\ballows?\s+(you|users?|customers?|one)\s+to\s+',
+        r'\benables?\s+(you|users?|customers?|one)\s+to\s+',
+        r'\bpermits?\s+(you|users?|customers?|one)\s+to\s+',
+        r'\bguaranteed?\s+',
+        r'\bentitled\s+to\s+',
+        r'\bpermission\s+to\s+',
+        r'\bdownload\s+(the|a|your)',
+        r'\baccess\s+(the|a|your)',
+    ]
+    
+    return any(re.search(pattern, context_text) for pattern in explicit_patterns)
+
+
+def _summarize_for_qualified(context_docs: List[str]) -> str:
+    """
+    Produce a short, document-scoped summary for qualified answers.
+    Avoids raw dumps; uses concise, professional phrasing.
+    """
+    if not context_docs:
+        return ""
+    raw = (context_docs[0] or "").strip()
+    if not raw:
+        return ""
+    # Strip [Doc N] prefixes
+    raw = re.sub(r"\[Doc\s+\d+\]\s*", "", raw, flags=re.IGNORECASE).strip()
+    # First sentence or first 120 chars; avoid long raw dumps
+    match = re.search(r"^[^.]{1,120}(?:\.|$)", raw)
+    excerpt = (match.group(0).strip() if match else raw[:120].strip()).strip()
+    if not excerpt:
+        return ""
+    excerpt = " ".join(excerpt.split()).lower()
+    # Strip leading "the documentation states that" so we never double it
+    excerpt = re.sub(
+        r"^\s*the\s+documentation\s+states?\s+(?:that\s+)?",
+        "",
+        excerpt,
+        flags=re.IGNORECASE,
+    ).strip()
+    if not excerpt:
+        return ""
+    # Minimal casing for common entities (order: longer phrases first)
+    for pat, repl in [
+        (r"\baws artifact\b", "AWS Artifact"),
+        (r"\bamazon web services\b", "Amazon Web Services"),
+        (r"\baws\b", "AWS"),
+    ]:
+        excerpt = re.sub(pat, repl, excerpt, flags=re.IGNORECASE)
+    if excerpt and excerpt[0].islower():
+        excerpt = excerpt[0].upper() + excerpt[1:]
+    return excerpt
+
+
+def _prevent_over_assertion(
+    question: str, answer: str, context_docs: List[str], logger
+) -> str:
+    """
+    Post-process answer to prevent over-assertion on capability questions.
+    
+    If question is capability-style AND answer is binary ("Yes"/"No") AND
+    context lacks explicit guarantees → replace with qualified statement or refusal.
+    """
+    if not answer or "don't know" in answer.lower():
+        return answer
+    
+    # Only process capability questions
+    if not _is_capability_question(question):
+        return answer
+    
+    answer_lower = answer.lower().strip()
+    
+    # Check for binary assertions (handles "Yes", "Yes,", "Yes.", "Yes, you can", etc.)
+    is_binary_yes = (
+        answer_lower.startswith(("yes", "yes,", "yes.")) or
+        re.match(r'^yes[,.]?\s+(you|i|we|one|users?|customers?)\s+can', answer_lower)
+    )
+    is_binary_no = (
+        answer_lower.startswith(("no", "no,", "no.")) or
+        re.match(r'^no[,.]?\s+(you|i|we|one|users?|customers?)\s+(cannot|cant|can\'t)', answer_lower)
+    )
+    
+    if not (is_binary_yes or is_binary_no):
+        return answer
+    
+    # Check if context has explicit guarantees
+    has_guarantee = _has_explicit_guarantee(context_docs)
+    
+    if has_guarantee:
+        # Explicit guarantee exists → allow binary answer
+        return answer
+    
+    # No explicit guarantee → replace with qualified statement
+    logger.warning(
+        "Binary capability answer without explicit guarantee - replacing with qualified statement",
+        question_preview=question[:50],
+        answer_preview=answer[:50],
+    )
+
+    summary = _summarize_for_qualified(context_docs)
+
+    if is_binary_yes:
+        # Replace "Yes" with qualified, document-scoped statement
+        if summary:
+            qualified = (
+                f"The documentation states that {summary}. "
+                "It does not explicitly specify download permissions, access conditions, or procedural guarantees."
+            )
+        else:
+            qualified = (
+                "The documentation describes availability or access at a high level. "
+                "It does not explicitly specify permissions, conditions, or procedural guarantees."
+            )
+        return qualified
+
+    # Binary "No" without guarantee → refuse (meaning unchanged)
+    return "I don't know."
 
 
 def generate_grounded_answer(question: str, context: List[Any], trace_id: str = None) -> Dict[str, Any]:
@@ -237,6 +394,9 @@ Return ONLY valid JSON, no other text.
             if not normalized_claims or not sources_used:
                 logger.warning("Missing claims/sources for non-refusal answer - enforcing refusal")
                 return {"answer": "I don't know.", "claims": [], "sources_used": []}
+
+        # Post-process: prevent over-assertion on capability questions
+        answer = _prevent_over_assertion(question, answer, context_docs, logger)
 
         prompt_tokens = int(payload.get("prompt_eval_count") or 0)
         completion_tokens = int(payload.get("eval_count") or 0)

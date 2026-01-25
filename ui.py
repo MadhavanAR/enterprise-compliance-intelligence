@@ -1,5 +1,4 @@
 import streamlit as st
-from rag.graph import app
 from rag.generate_ui import generate_answer_stream_ui
 from dotenv import load_dotenv
 import time
@@ -86,6 +85,15 @@ st.markdown("""
             height: auto !important;
             min-height: 100vh !important;
             overflow-y: auto !important;
+        }
+        /* Override desktop "overflow: hidden" containers */
+        .main {
+            height: auto !important;
+            overflow: auto !important;
+        }
+        div[data-testid="stAppViewContainer"] > .main {
+            height: auto !important;
+            overflow: auto !important;
         }
         /* Reserve space for the fixed chat input */
         div[data-testid="stAppViewContainer"] > .main {
@@ -196,6 +204,14 @@ st.markdown("""
         box-sizing: border-box;
     }
 
+    /* Mobile/tablet: ensure content never sits behind the fixed chat input */
+    @media (max-width: 768px) {
+        .empty-screen {
+            min-height: auto;
+            padding-bottom: calc(140px + env(safe-area-inset-bottom));
+        }
+    }
+
     /* Hero (empty state) */
     .hero {
         display: flex;
@@ -215,6 +231,17 @@ st.markdown("""
         .hero {
             max-width: 100%;
             margin-top: 0;
+        }
+        /* Mobile readability: allow wrapping (desktop stays single-line) */
+        .hero-title,
+        .hero-subtitle {
+            white-space: normal !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+        }
+        /* Mobile: hide hero hints (long instructional content) */
+        .hero-hints {
+            display: none !important;
         }
     }
     
@@ -957,40 +984,34 @@ st.markdown("""
         }
     }
     
-    /* Secondary button (clear) */
-    .stButton > button[kind="secondary"] {
+    /* Secondary buttons (Documentation/New chat) */
+    .stButton > button[kind*="secondary"] {
         background: rgba(255, 255, 255, 0.1);
         color: #e5e7eb;
         border: 1px solid rgba(255, 255, 255, 0.2);
         backdrop-filter: blur(10px);
-        padding: 0.35rem 0.65rem !important;
+        padding: 0.28rem 0.55rem !important;
         min-width: auto !important;
         width: auto !important;
-        height: auto !important;
+        height: 34px !important;
         border-radius: 12px !important;
+        line-height: 1 !important;
+        font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+        font-size: 0.82rem !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        white-space: nowrap !important;
     }
     
-    .stButton > button[kind="secondary"]:hover {
+    .stButton > button[kind*="secondary"]:hover {
         background: rgba(255, 255, 255, 0.15);
         transform: translateY(-1px);
     }
 
-    /* Mobile: keep "New chat" pinned top-right */
-    @media (max-width: 768px) {
-        .stButton > button[kind="secondary"] {
-            position: fixed !important;
-            top: 0.75rem !important;
-            right: 0.75rem !important;
-            z-index: 10001 !important;
-        }
-    }
-
-    @media (max-width: 480px) {
-        .stButton > button[kind="secondary"] {
-            top: 0.6rem !important;
-            right: 0.6rem !important;
-        }
-    }
+    /* NOTE: Do not pin secondary buttons on mobile.
+       We now have multiple top-right buttons (Documentation + New chat),
+       and pinning by kind causes overlap. */
     
     /* Loading animation */
     .loading-dots {
@@ -1105,13 +1126,20 @@ if "messages" not in st.session_state:
 if "processing" not in st.session_state:
     st.session_state.processing = False
 
-# Top-right: “New chat”
-top_left, top_right = st.columns([0.9, 0.1])
+# Top-right: “Documentation” + “New chat”
+top_left, top_right = st.columns([0.78, 0.22])
 with top_right:
-    if st.button("New chat", help="Clear chat", key="clear_btn", type="secondary", use_container_width=False):
-        st.session_state.messages = []
-        st.session_state.processing = False
-        st.rerun()
+    docs_col, clear_col = st.columns([1, 1])
+    with docs_col:
+        # Use st.Page to avoid relying on the pages/ registry being refreshed.
+        docs_page = st.Page("pages/Documentation.py", title="Documentation", icon="📚")
+        if st.button("Documentation", key="docs_btn", type="secondary", use_container_width=False):
+            st.switch_page(docs_page)
+    with clear_col:
+        if st.button("New chat", help="Clear chat", key="clear_btn", type="secondary", use_container_width=False):
+            st.session_state.messages = []
+            st.session_state.processing = False
+            st.rerun()
 
 # Show hero (empty) or messages
 if not st.session_state.messages:
@@ -1126,53 +1154,18 @@ if not st.session_state.messages:
             </div>
             <div class="hero-hints">
                 <div class="hint">
-                    <div class="hint-title">Try a verified question</div>
-                    <p class="hint-desc">Ask about certifications, standards, controls, and evidence.</p>
+                    <div class="hint-title">How to ask good questions</div>
+                    <p class="hint-desc">Ask about certifications, standards, controls, and evidence. Avoid opinion or advice questions.</p>
                 </div>
                 <div class="hint">
-                    <div class="hint-title">How to verify</div>
-                    <p class="hint-desc">Review claims → sources, decision path, and confidence. If evidence is missing, it refuses.</p>
+                    <div class="hint-title">How to verify the output</div>
+                    <p class="hint-desc">Open 🔍 Audit & Evidence: check Claims → Sources, Decision path, and Confidence. Low confidence or missing sources means the answer is not verified.</p>
                 </div>
             </div>
         </div>
     </div>
     """, unsafe_allow_html=True)
-
-    # Golden prompts (click-to-run)
-    st.markdown("<div style='height: 0.75rem;'></div>", unsafe_allow_html=True)
-    _, mid, _ = st.columns([1, 3, 1])
-    with mid:
-        st.markdown("**Try a verified question**")
-        b1, b2, b3 = st.columns(3)
-        prompt_1 = "What compliance certifications does AWS have?"
-        prompt_2 = "Is AWS compliant with GDPR?"
-        prompt_3 = "What security standards does AWS follow?"
-
-        clicked = None
-        if b1.button("AWS certifications", use_container_width=True):
-            clicked = prompt_1
-        if b2.button("GDPR compliance", use_container_width=True):
-            clicked = prompt_2
-        if b3.button("Security standards", use_container_width=True):
-            clicked = prompt_3
-
-        if clicked and not st.session_state.processing:
-            st.session_state.processing = True
-            st.session_state.messages.append({"role": "user", "content": clicked})
-            st.rerun()
-
-        st.caption("⚠️ Opinion, speculation, or unsupported questions will be refused by design.")
 else:
-    # Always-visible verification block (trust signaling)
-    _, mid, _ = st.columns([1, 3, 1])
-    with mid:
-        st.markdown("**How to know this answer is correct**")
-        st.caption(
-            "This system answers only what can be proven from retrieved sources. "
-            "Each response includes evidence (sources), claim-to-source mapping, a decision path, and a confidence score. "
-            "If evidence is missing or policy blocks the request, it refuses."
-        )
-
     for message in st.session_state.messages:
         # IMPORTANT: Keep all elements (bubble + expander) in the same centered column.
         # Mixing HTML wrapper divs with Streamlit widgets causes misalignment.
@@ -1295,6 +1288,7 @@ st.markdown(
       @media (max-width: 768px) {{
         div[data-testid="stChatInput"] {{
           width: min(94vw, 640px) !important;
+          bottom: 1rem !important;
         }}
       }}
 
