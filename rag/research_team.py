@@ -106,17 +106,20 @@ def research_node(state: AgentState) -> dict:
     
     logger.end_timer("research", notes_count=len(notes), tool_calls_count=len(tool_calls))
     
-    # EXPLICIT AGENT STATE: Include all required fields
-    return {
+    # EXPLICIT AGENT STATE: Include all required fields (preserve feature_flags for writing team)
+    out = {
         "research_notes": notes,
         "context": notes,  # Keep context in sync
         "documents": documents,
         "tool_calls": tool_calls,
-        "trace_id": trace_id,  # Propagate trace_id
-        "decision_path": decision_path,  # Explicit decision path
-        "used_tools": used_tools,  # List of tools invoked
-        "metadata_filters": metadata_filters  # Propagate filters
+        "trace_id": trace_id,
+        "decision_path": decision_path,
+        "used_tools": used_tools,
+        "metadata_filters": metadata_filters,
     }
+    if "feature_flags" in state:
+        out["feature_flags"] = state["feature_flags"]
+    return out
 
 def build_research_graph():
     graph = StateGraph(AgentState)

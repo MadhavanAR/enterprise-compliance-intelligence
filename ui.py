@@ -1,5 +1,6 @@
 import streamlit as st
 from rag.generate_ui import generate_answer_stream_ui
+from rag.feature_flags import FeatureFlags
 from dotenv import load_dotenv
 import time
 import re
@@ -1126,12 +1127,35 @@ if "messages" not in st.session_state:
 if "processing" not in st.session_state:
     st.session_state.processing = False
 
-# Top-right: “Documentation” + “New chat”
+# Compare Mode (Demo Only) — sidebar
+with st.sidebar:
+    st.subheader("🔬 Compare Mode (Demo Only)")
+    st.caption("Turn OFF to simulate how normal chatbots behave.")
+    st.checkbox("Refusal on Uncertainty", value=True, key="ff_refusal")
+    st.checkbox("Claim Verification", value=True, key="ff_claim")
+    st.checkbox("Audit Trail", value=True, key="ff_audit")
+    st.checkbox("Confidence Scoring", value=True, key="ff_confidence")
+
+def _demo_feature_flags():
+    return FeatureFlags(
+        enable_query_router=True,
+        enable_policy_engine=True,
+        enforce_grounded_answers=True,
+        enforce_claim_to_source=st.session_state.get("ff_claim", True),
+        enable_refusal=st.session_state.get("ff_refusal", True),
+        enable_confidence=st.session_state.get("ff_confidence", True),
+        enable_audit_trail=st.session_state.get("ff_audit", True),
+    )
+
+_any_off = not (st.session_state.get("ff_refusal", True) and st.session_state.get("ff_claim", True) and st.session_state.get("ff_audit", True) and st.session_state.get("ff_confidence", True))
+if _any_off:
+    st.warning("⚠️ Demo Mode: Safety features disabled for comparison.")
+
+# Top-right: Documentation + New chat
 top_left, top_right = st.columns([0.78, 0.22])
 with top_right:
     docs_col, clear_col = st.columns([1, 1])
     with docs_col:
-        # Use st.Page to avoid relying on the pages/ registry being refreshed.
         docs_page = st.Page("pages/Documentation.py", title="Documentation", icon="📚")
         if st.button("Documentation", key="docs_btn", type="secondary", use_container_width=False):
             st.switch_page(docs_page)
@@ -1231,7 +1255,10 @@ else:
 
                         # Confidence
                         st.markdown("**Confidence**")
-                        st.markdown(f"`{confidence:.2f}` — {confidence_reason}")
+                        if confidence is not None:
+                            st.markdown(f"`{confidence:.2f}` — {confidence_reason}")
+                        else:
+                            st.markdown("— (disabled)")
                 else:
                     content = _format_answer_with_citations(message["content"])
                     st.markdown(f'<div class="assistant-message">{content}</div>', unsafe_allow_html=True)
@@ -1329,7 +1356,7 @@ elif st.session_state.messages and st.session_state.messages[-1]["role"] == "use
             st.session_state.metadata = {}
         
         # Stream answer with metadata
-        for chunk in generate_answer_stream_ui(user_query):
+        for chunk in generate_answer_stream_ui(user_query, feature_flags=_demo_feature_flags()):
             if chunk["type"] == "status":
                 # Update status indicator
                 status_text = chunk["data"]

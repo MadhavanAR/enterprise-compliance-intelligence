@@ -18,46 +18,45 @@ def dopeness_editor(state: AgentState):
     """
     trace_id = state.get("trace_id")
     logger = get_logger(trace_id)
-    
+    ff = state.get("feature_flags")
+
     logger.start_timer("writing")
-    
-    # Use grounded answer generation (enterprise-grade)
+
     grounded_result = generate_grounded_answer(
         state["question"],
         state["research_notes"],
-        trace_id=trace_id
+        trace_id=trace_id,
+        feature_flags=ff,
     )
-    
-    # Extract values
     answer = grounded_result.get("answer", "")
     claims = grounded_result.get("claims", [])
     sources_used = grounded_result.get("sources_used", [])
-    
-    # Estimate confidence
-    metadata_match = state.get("metadata_filters") is not None and len(sources_used) > 0
-    rerank_score_avg = state.get("rerank_score_avg")  # Can be added to state by retrieval
-    
-    confidence_result = estimate_confidence(
-        claims_count=len(claims),
-        sources_used=len(sources_used),
-        metadata_match=metadata_match,
-        rerank_score_avg=rerank_score_avg,
-        trace_id=trace_id
-    )
-    
-    logger.end_timer("writing", 
-                    answer_length=len(answer),
-                    claims_count=len(claims),
-                    sources_count=len(sources_used),
-                    confidence=confidence_result.get("confidence"))
-    
-    # Return structured response (enterprise-grade)
+
+    if ff and getattr(ff, "enable_confidence", True) is False:
+        confidence = None
+        confidence_reason = "disabled (demo mode)"
+    else:
+        metadata_match = state.get("metadata_filters") is not None and len(sources_used) > 0
+        rerank_score_avg = state.get("rerank_score_avg")
+        confidence_result = estimate_confidence(
+            claims_count=len(claims),
+            sources_used=len(sources_used),
+            metadata_match=metadata_match,
+            rerank_score_avg=rerank_score_avg,
+            trace_id=trace_id,
+        )
+        confidence = confidence_result.get("confidence", 0.5)
+        confidence_reason = confidence_result.get("confidence_reason", "")
+
+    logger.end_timer("writing", answer_length=len(answer), claims_count=len(claims), sources_count=len(sources_used), confidence=confidence)
+
     return {
         "answer": answer,
         "claims": claims,
         "sources_used": sources_used,
-        "confidence": confidence_result.get("confidence", 0.5),
-        "confidence_reason": confidence_result.get("confidence_reason", "")
+        "confidence": confidence,
+        "confidence_reason": confidence_reason,
+        "unverified": grounded_result.get("unverified", False),
     }
 
 def build_writing_graph():

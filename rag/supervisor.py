@@ -2,6 +2,7 @@ from rag.state import RagState
 from rag.logger import get_logger
 from rag.query_router import route_query
 from rag.policy_engine import evaluate_policies, check_post_generation_policy
+from rag.feature_flags import FeatureFlags
 
 # Phase 1 supervisor (keep for backward compatibility)
 def supervisor_node(state: RagState):
@@ -42,67 +43,72 @@ def supervisor_node_phase3(state: AgentState):
         state["trace_id"] = trace_id
     
     question = state.get("question", "")
-    
-    # QUERY ROUTER: Intent classification and routing decision
-    logger.info("Query Router: Analyzing query intent", query_preview=question[:50])
-    routing_decision = route_query(question, trace_id=trace_id)
-    
-    # Extract routing decision
-    use_rag = routing_decision.get("use_rag", True)
-    use_web = routing_decision.get("use_web", False)
-    refuse = routing_decision.get("refuse", False)
-    intent = routing_decision.get("intent", "unknown")
-    confidence_requirement = routing_decision.get("confidence_requirement", "medium")
-    
-    # Extract metadata filters from routing decision
-    routing_metadata_filters = routing_decision.get("metadata_filters")
+    ff = state.get("feature_flags") or FeatureFlags()
+
+    # QUERY ROUTER: Intent classification and routing decision (skip if disabled for demo)
+    if ff.enable_query_router:
+        logger.info("Query Router: Analyzing query intent", query_preview=question[:50])
+        routing_decision = route_query(question, trace_id=trace_id)
+        use_rag = routing_decision.get("use_rag", True)
+        use_web = routing_decision.get("use_web", False)
+        refuse = routing_decision.get("refuse", False)
+        intent = routing_decision.get("intent", "unknown")
+        confidence_requirement = routing_decision.get("confidence_requirement", "medium")
+        routing_metadata_filters = routing_decision.get("metadata_filters")
+        decision_path = ["query_router"]
+    else:
+        logger.info("Query Router: Skipped (demo mode)", decision_path="router_skipped")
+        use_rag = True
+        use_web = False
+        refuse = False
+        intent = "factual"
+        confidence_requirement = "medium"
+        routing_metadata_filters = None
+        routing_decision = {"use_rag": True, "use_web": False, "refuse": False, "intent": "factual", "metadata_filters": None, "confidence_requirement": "medium"}
+        decision_path = ["router_skipped"]
+
     if routing_metadata_filters:
-        # Merge with existing metadata filters (routing takes precedence)
         existing_filters = state.get("metadata_filters", {}) or {}
         metadata_filters = {**existing_filters, **routing_metadata_filters}
     else:
         metadata_filters = state.get("metadata_filters")
-    
-    logger.info("Query Router: Decision complete",
-                intent=intent,
-                use_rag=use_rag,
-                use_web=use_web,
-                refuse=refuse,
-                metadata_filters=metadata_filters,
-                confidence_requirement=confidence_requirement)
-    
-    # POLICY ENGINE: Evaluate policies BEFORE retrieval (deterministic, no LLM)
-    policy_result = evaluate_policies(
-        intent=intent,
-        confidence_requirement=confidence_requirement,
-        metadata_filters=metadata_filters,
-        trace_id=trace_id
-    )
-    
-    # Extract policy decision
+
+    if ff.enable_query_router:
+        logger.info("Query Router: Decision complete",
+                    intent=intent, use_rag=use_rag, use_web=use_web, refuse=refuse,
+                    metadata_filters=metadata_filters, confidence_requirement=confidence_requirement)
+
+    # POLICY ENGINE: Evaluate policies BEFORE retrieval (skip if disabled for demo)
+    if ff.enable_policy_engine:
+        policy_result = evaluate_policies(
+            intent=intent,
+            confidence_requirement=confidence_requirement,
+            metadata_filters=metadata_filters,
+            trace_id=trace_id
+        )
+        logger.info("Policy Engine: Policies evaluated",
+                    allowed=policy_result.get("allowed", True), refuse=policy_result.get("refuse", False),
+                    confidence_threshold=policy_result.get("confidence_threshold", 0.5),
+                    violations_count=len(policy_result.get("policy_violations", [])))
+    else:
+        logger.info("Policy Engine: Skipped (demo mode)", decision_path="policy_skipped")
+        policy_result = {"allowed": True, "refuse": False, "reason": None, "confidence_threshold": 0.5, "refuse_on_low_confidence": False, "policy_violations": []}
+
+    state["policy_result"] = policy_result
     policy_allowed = policy_result.get("allowed", True)
     policy_refuse = policy_result.get("refuse", False)
     policy_reason = policy_result.get("reason")
     confidence_threshold = policy_result.get("confidence_threshold", 0.5)
     refuse_on_low_confidence = policy_result.get("refuse_on_low_confidence", False)
     policy_violations = policy_result.get("policy_violations", [])
-    
-    # Store policy result in state for later use
-    state["policy_result"] = policy_result
-    
-    # Update decision path with policy evaluation
-    decision_path = ["query_router"]
     if policy_violations:
         decision_path.append("policy_check")
-    
-    logger.info("Policy Engine: Policies evaluated",
-                allowed=policy_allowed,
-                refuse=policy_refuse,
-                confidence_threshold=confidence_threshold,
-                violations_count=len(policy_violations))
-    
-    # HARD REFUSAL: If router OR policy says refuse, return immediately
-    if refuse or not policy_allowed or policy_refuse:
+
+    if not ff.enable_refusal and (refuse or not policy_allowed or policy_refuse):
+        logger.info("Refusal bypassed (demo mode)", reason="refusal_disabled (demo mode)")
+
+    # HARD REFUSAL: If router OR policy says refuse, return immediately (skip if refusal disabled for demo)
+    if ff.enable_refusal and (refuse or not policy_allowed or policy_refuse):
         refusal_reason = policy_reason or "Query refused: opinion/speculation detected by router"
         logger.warning("Query refused", reason=refusal_reason, policy_violations=policy_violations)
         
@@ -163,16 +169,23 @@ def supervisor_node_phase3(state: AgentState):
     confidence = writing_result.get("confidence", 0.5)
     confidence_reason = writing_result.get("confidence_reason", "")
     
-    # POLICY ENGINE: Post-generation policy check (confidence-based refusal)
-    post_policy_result = check_post_generation_policy(
-        confidence=confidence,
-        confidence_threshold=confidence_threshold,
-        refuse_on_low_confidence=refuse_on_low_confidence,
-        trace_id=trace_id
-    )
-    
-    # Enforce post-generation policy if enabled
-    if post_policy_result.get("refuse") and post_policy_result.get("reason"):
+    # POLICY ENGINE: Post-generation policy check (skip if policy disabled for demo)
+    if ff.enable_policy_engine:
+        _conf = confidence if confidence is not None else 0.0
+        post_policy_result = check_post_generation_policy(
+            confidence=_conf,
+            confidence_threshold=confidence_threshold,
+            refuse_on_low_confidence=refuse_on_low_confidence,
+            trace_id=trace_id
+        )
+    else:
+        post_policy_result = {"refuse": False}
+
+    if not ff.enable_refusal and post_policy_result.get("refuse") and post_policy_result.get("reason"):
+        logger.info("Post-generation refusal bypassed (demo mode)", reason="refusal_disabled (demo mode)")
+
+    # Enforce post-generation policy if enabled (skip when refusal disabled for demo)
+    if ff.enable_refusal and post_policy_result.get("refuse") and post_policy_result.get("reason"):
         logger.warning("Post-generation policy violation", 
                       reason=post_policy_result.get("reason"),
                       confidence=confidence,

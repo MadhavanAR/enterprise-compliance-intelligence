@@ -26,3 +26,4 @@ class AgentState(TypedDict, total=False):
     confidence_reason: str  # Reason for confidence score
     intent: str  # Query intent: "factual" | "analytical" | "opinion" | "unknown"
     confidence_requirement: str  # "high" | "medium" | "low"
+    feature_flags: Optional[Any]  # DEMO-ONLY: Compare Mode toggles (canonical: engine only)

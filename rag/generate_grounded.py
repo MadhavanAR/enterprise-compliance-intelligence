@@ -259,19 +259,27 @@ def _prevent_over_assertion(
     return "I don't know."
 
 
-def generate_grounded_answer(question: str, context: List[Any], trace_id: str = None) -> Dict[str, Any]:
+def generate_grounded_answer(
+    question: str, context: List[Any], trace_id: str = None, feature_flags: Any = None
+) -> Dict[str, Any]:
     """
     Generate grounded answer with structured claims + citations.
 
-    HARD REFUSAL GUARANTEE:
+    HARD REFUSAL GUARANTEE (when enforce_grounded_answers=True):
     - No usable context → "I don't know"
     """
     logger = get_logger(trace_id)
+    ff = feature_flags
+    enforce_grounded = getattr(ff, "enforce_grounded_answers", True) if ff else True
+    enforce_claim = getattr(ff, "enforce_claim_to_source", True) if ff else True
 
     context_docs = _normalize_context(context)
     if not context_docs:
-        logger.warning("Empty or invalid context detected - enforcing hard refusal")
-        return {"answer": "I don't know.", "claims": [], "sources_used": []}
+        if enforce_grounded:
+            logger.warning("Empty or invalid context detected - enforcing hard refusal")
+            return {"answer": "I don't know.", "claims": [], "sources_used": []}
+        logger.info("Empty context, enforce_grounded_answers=False - returning UNVERIFIED")
+        return {"answer": "[No supporting context — UNVERIFIED]", "claims": [], "sources_used": [], "unverified": True}
 
     context_docs = context_docs[:CONTEXT_LIMIT]
     allowed_docs = {f"Doc {i}" for i in range(1, len(context_docs) + 1)}
@@ -359,6 +367,7 @@ Return ONLY valid JSON, no other text.
             claims = []
         normalized_claims: List[Dict[str, str]] = []
         invalid_source = False
+        claim_verification_skipped = False
         for c in claims:
             if not isinstance(c, dict):
                 continue
@@ -367,33 +376,48 @@ Return ONLY valid JSON, no other text.
             if not isinstance(text, str) or not text.strip():
                 continue
             if not isinstance(source_doc, str) or not source_doc.strip():
+                if not enforce_claim:
+                    claim_verification_skipped = True
+                    normalized_claims.append({"text": text.strip(), "source_doc": ""})
                 continue
             source_doc = source_doc.strip()
             if source_doc not in allowed_docs:
-                invalid_source = True
-                continue
-            normalized_claims.append({"text": text.strip(), "source_doc": source_doc})
+                if enforce_claim:
+                    invalid_source = True
+                    continue
+                claim_verification_skipped = True
+                normalized_claims.append({"text": text.strip(), "source_doc": source_doc})
+            else:
+                normalized_claims.append({"text": text.strip(), "source_doc": source_doc})
 
-        if invalid_source:
+        if enforce_claim and invalid_source:
             logger.warning("Invalid claim source_doc detected - enforcing refusal")
             return {"answer": "I don't know.", "claims": [], "sources_used": []}
+        if claim_verification_skipped:
+            logger.info("claim_verification_disabled (demo mode)")
 
         if not isinstance(sources_used, list):
             sources_used = []
         sources_used = [s.strip() for s in sources_used if isinstance(s, str) and s.strip()]
-        # Enforce sources_used subset of allowed docs
-        if any(s not in allowed_docs for s in sources_used):
+        if enforce_claim and any(s not in allowed_docs for s in sources_used):
             logger.warning("Invalid sources_used detected - enforcing refusal")
             return {"answer": "I don't know.", "claims": [], "sources_used": []}
+        if not enforce_claim and any(s not in allowed_docs for s in sources_used):
+            logger.info("claim_verification_disabled (demo mode)")
 
         if not sources_used and normalized_claims:
-            sources_used = sorted({c["source_doc"] for c in normalized_claims})
+            sources_used = sorted({c["source_doc"] for c in normalized_claims if c.get("source_doc") and c["source_doc"] in allowed_docs})
+            if not sources_used:
+                sources_used = list({c.get("source_doc") for c in normalized_claims if c.get("source_doc")})
 
-        # Enterprise contract: non-refusal answers must have claims + sources
+        # Enterprise contract: non-refusal answers must have claims + sources (skip when enforce_grounded_answers=False)
         if answer and "don't know" not in answer.lower():
             if not normalized_claims or not sources_used:
-                logger.warning("Missing claims/sources for non-refusal answer - enforcing refusal")
-                return {"answer": "I don't know.", "claims": [], "sources_used": []}
+                if enforce_grounded:
+                    logger.warning("Missing claims/sources for non-refusal answer - enforcing refusal")
+                    return {"answer": "I don't know.", "claims": [], "sources_used": []}
+                # Allow but mark UNVERIFIED
+                pass
 
         # Post-process: prevent over-assertion on capability questions
         answer = _prevent_over_assertion(question, answer, context_docs, logger)
@@ -407,6 +431,8 @@ Return ONLY valid JSON, no other text.
         )
 
         result = {"answer": answer, "claims": normalized_claims, "sources_used": sources_used}
+        if (not normalized_claims or not sources_used) and not enforce_grounded:
+            result["unverified"] = True
 
         logger.end_timer(
             "grounded_generation",
