@@ -1127,15 +1127,6 @@ if "messages" not in st.session_state:
 if "processing" not in st.session_state:
     st.session_state.processing = False
 
-# Compare Mode (Demo Only) — sidebar
-with st.sidebar:
-    st.subheader("🔬 Compare Mode (Demo Only)")
-    st.caption("Turn OFF to simulate how normal chatbots behave.")
-    st.checkbox("Refusal on Uncertainty", value=True, key="ff_refusal")
-    st.checkbox("Claim Verification", value=True, key="ff_claim")
-    st.checkbox("Audit Trail", value=True, key="ff_audit")
-    st.checkbox("Confidence Scoring", value=True, key="ff_confidence")
-
 def _demo_feature_flags():
     return FeatureFlags(
         enable_query_router=True,
@@ -1146,10 +1137,6 @@ def _demo_feature_flags():
         enable_confidence=st.session_state.get("ff_confidence", True),
         enable_audit_trail=st.session_state.get("ff_audit", True),
     )
-
-_any_off = not (st.session_state.get("ff_refusal", True) and st.session_state.get("ff_claim", True) and st.session_state.get("ff_audit", True) and st.session_state.get("ff_confidence", True))
-if _any_off:
-    st.warning("⚠️ Demo Mode: Safety features disabled for comparison.")
 
 # Top-right: Documentation + New chat
 top_left, top_right = st.columns([0.78, 0.22])
@@ -1174,16 +1161,16 @@ if not st.session_state.messages:
             <div class="hero-badge">Deterministic · Auditable · Zero-Hallucination</div>
             <div class="hero-title">Enterprise Compliance Intelligence</div>
             <div class="hero-subtitle">
-                Ask questions that require verified sources. Every answer includes evidence, confidence, and an audit trail.
+                Answers include evidence, confidence, and an audit trail.
             </div>
             <div class="hero-hints">
                 <div class="hint">
                     <div class="hint-title">How to ask good questions</div>
-                    <p class="hint-desc">Ask about certifications, standards, controls, and evidence. Avoid opinion or advice questions.</p>
+                    <p class="hint-desc">Focus on certifications, standards, evidence. Avoid opinions.</p>
                 </div>
                 <div class="hint">
                     <div class="hint-title">How to verify the output</div>
-                    <p class="hint-desc">Open 🔍 Audit & Evidence: check Claims → Sources, Decision path, and Confidence. Low confidence or missing sources means the answer is not verified.</p>
+                    <p class="hint-desc">Check Claims, Sources, path, Confidence. Missing means unverified.</p>
                 </div>
             </div>
         </div>
@@ -1272,22 +1259,63 @@ else:
 # We dynamically position it closer to the hero on the empty screen.
 #
 
-# Empty state: lift input up to sit right under the tiles (responsive)
-chat_bottom = "clamp(220px, 26vh, 360px)" if not st.session_state.messages else "1.25rem"
+# Empty state: lift input up; with messages place input just above the combined card
+chat_bottom = "clamp(220px, 26vh, 360px)" if not st.session_state.messages else "4rem"
 chat_z = "10000" if not st.session_state.messages else "50"
 st.markdown(
     f"""
     <style>
+      :root {{
+        --chat-bottom: {chat_bottom};
+      }}
+
+      /* Toggles row = top of input card, single line, equal padding and gaps */
+      [data-testid^="stHorizontalBlock"]:has(.compare-mode-label) {{
+        position: fixed !important;
+        left: 50% !important;
+        transform: translateX(-50%) !important;
+        width: min(640px, 90vw) !important;
+        bottom: calc(var(--chat-bottom) + 100px) !important;
+        z-index: {chat_z} !important;
+        background: rgba(10, 10, 10, 0.55) !important;
+        border: 1px solid rgba(255, 255, 255, 0.22) !important;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.12) !important;
+        border-radius: 14px 14px 0 0 !important;
+        padding: 0.5rem !important;
+        box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.2) !important;
+        backdrop-filter: blur(18px) !important;
+        display: flex !important;
+        flex-wrap: nowrap !important;
+        align-items: center !important;
+        gap: 0.5rem !important;
+      }}
+      [data-testid^="stHorizontalBlock"]:has(.compare-mode-label) > div {{
+        flex: 1 1 0 !important;
+        min-width: 0 !important;
+        padding: 0 0.25rem !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+      }}
+      [data-testid^="stHorizontalBlock"]:has(.compare-mode-label) label {{
+        font-size: 0.7rem !important;
+        white-space: nowrap !important;
+      }}
+      [data-testid^="stHorizontalBlock"]:has(.compare-mode-label) [data-testid="stMarkdown"]:has(.compare-mode-label) {{
+        margin: 0 !important; padding: 0 !important; min-height: 0 !important; height: 0 !important; width: 0 !important; min-width: 0 !important; overflow: hidden !important; flex: 0 0 0 !important;
+      }}
+
       div[data-testid="stChatInput"] {{
         position: fixed !important;
         left: 50% !important;
         transform: translateX(-50%) !important;
-        bottom: {chat_bottom} !important;
+        bottom: var(--chat-bottom) !important;
         width: min(640px, 90vw) !important;
         z-index: {chat_z} !important;
         background: rgba(10, 10, 10, 0.55) !important;
         border: 1px solid rgba(255, 255, 255, 0.22) !important;
-        border-radius: 14px !important;
+        border-top: none !important;
+        border-radius: 0 0 14px 14px !important;
         box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35) !important;
         backdrop-filter: blur(18px) !important;
         padding: 0.35rem 0.4rem !important;
@@ -1311,18 +1339,32 @@ st.markdown(
         pointer-events: none;
       }}
 
-      /* Mobile/tablet: keep chat input from overlapping content */
+      @media (min-width: 769px) {{
+        .main {{ padding-bottom: 8rem !important; }}
+      }}
+
+      /* Mobile/tablet: toggles above input, both in one card */
       @media (max-width: 768px) {{
         div[data-testid="stChatInput"] {{
           width: min(94vw, 640px) !important;
-          bottom: 1rem !important;
+          bottom: 5rem !important;
+        }}
+        [data-testid^="stHorizontalBlock"]:has(.compare-mode-label) {{
+          width: min(94vw, 640px) !important;
+          bottom: calc(5rem + 100px) !important;
+          padding: 0.5rem !important;
+          gap: 0.5rem !important;
         }}
       }}
 
       @media (max-width: 480px) {{
         div[data-testid="stChatInput"] {{
           width: 94vw !important;
-          bottom: calc(0.9rem + env(safe-area-inset-bottom)) !important;
+          bottom: 5rem !important;
+        }}
+        [data-testid^="stHorizontalBlock"]:has(.compare-mode-label) {{
+          bottom: calc(5rem + 100px) !important;
+          width: 94vw !important;
         }}
       }}
     </style>
@@ -1330,7 +1372,27 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# Compare Mode — minimal checkboxes in one line, inside the input card (top section)
+with st.container():
+    tc1, tc2, tc3, tc4 = st.columns(4)
+    with tc1:
+        st.markdown('<span class="compare-mode-label" style="display:none;"></span>', unsafe_allow_html=True)
+        st.checkbox("Refusal", value=True, key="ff_refusal", help="Refusal on uncertainty")
+    with tc2:
+        st.checkbox("Claim", value=True, key="ff_claim", help="Claim verification")
+    with tc3:
+        st.checkbox("Audit", value=True, key="ff_audit", help="Audit trail")
+    with tc4:
+        st.checkbox("Confidence", value=True, key="ff_confidence", help="Confidence scoring")
+
+_any_off = not (st.session_state.get("ff_refusal", True) and st.session_state.get("ff_claim", True) and st.session_state.get("ff_audit", True) and st.session_state.get("ff_confidence", True))
+if _any_off:
+    st.warning("⚠️ Demo Mode: Safety features disabled for comparison.")
+
 prompt = st.chat_input("Ask a grounded question (sources required)…")
+
+# Spacer so fixed input card (toggles + input) does not overlap content
+st.markdown('<div style="height:8.5rem;" aria-hidden="true"></div>', unsafe_allow_html=True)
 
 if prompt and not st.session_state.processing:
     st.session_state.processing = True
