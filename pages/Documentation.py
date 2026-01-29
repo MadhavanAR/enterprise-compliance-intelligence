@@ -126,8 +126,16 @@ Ask questions that can be verified from documents, such as:
 - "What should my company do?" (opinion / advice)
 - Anything not supported by your documents
 
+### What each section means (plain language)
+- **Answer** — The main response to your question. It is based only on the documents the system has; it does not guess or add information from elsewhere.
+- **Claims** — The specific statements the system is making. Each claim should list a source (a document). If a claim has no source, treat it as unverified.
+- **Sources** — The documents that were used to support the answer. These are the only places the system got its information from.
+- **Confidence** — A score that reflects how strong the evidence is from your documents (e.g., how many sources, how well they match). It is **not** how “sure” the model is; it is about evidence strength.
+- **Decision path** — A short description of what the system did to reach the answer (e.g., searched documents, used a policy). This is for auditability so you can see the path taken.
+
 ### How to verify answers (step-by-step)
-After you get an answer, open **🔍 Audit & Evidence** and follow these steps:
+After you get an answer, open **🔍 Audit & Evidence** and follow these steps.  
+*(The toggles above the chat box only control which sections you see; they do not change how the system computes the answer.)*
 
 **Step 1: Check Decision path**
 - Shows what the system did (e.g., "query_router → rag → rag")
@@ -185,23 +193,25 @@ After you get an answer, open **🔍 Audit & Evidence** and follow these steps:
 3. Verify that claims reference these sources
 4. If sources are generic or don't support claims, the answer is not reliable
 
-### Why refusal is not a failure
-**Refusal is a safety feature.** The system refuses when:
-- It cannot find relevant documents
-- The documents do not clearly support an answer
-- The question is opinion/speculation/advice (not verifiable)
+### Why refusal is a safety feature (not a failure)
+When the system says **"I don't know."**, it is **refusing** to answer. That is by design.
 
-**Why this is good:**
-- Prevents incorrect answers that could lead to compliance issues
-- Ensures you only act on verified information
-- Protects against hallucination and guessing
-- Maintains audit integrity
+**Refusal means the system is being safe.** It refuses when:
+- It cannot find relevant documents for your question
+- The documents do not clearly support a yes/no answer
+- The question asks for opinion, speculation, or advice (which cannot be verified from documents)
 
-**What to do when refused:**
-- Check if your question can be rephrased to be more specific
-- Verify that relevant documents are available in the system
-- Consider whether the question requires opinion or advice (which the system cannot provide)
-- For critical questions, consult human experts
+**Why this is good for you:**
+- It prevents wrong answers that could affect compliance or decisions
+- You only see answers that can be backed by your documents
+- It avoids guessing or making things up (zero-hallucination)
+- It keeps the audit trail honest
+
+**What you can do when you see a refusal:**
+- Rephrase your question to be more specific or factual
+- Check that the right documents are available in the system
+- If the question really needs opinion or advice, use a human expert
+- For important compliance questions, always have a person review when in doubt
 
 ### How this compares to normal chatbots / RAG systems
 **Normal chatbots**

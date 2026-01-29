@@ -1127,15 +1127,38 @@ if "messages" not in st.session_state:
 if "processing" not in st.session_state:
     st.session_state.processing = False
 
+def _normalize_claims_for_display(claims_raw):
+    """Normalize claims from payload to a list of {text, source_doc}. Never infer refusal from shape."""
+    if claims_raw is None:
+        return []
+    if not isinstance(claims_raw, list):
+        if isinstance(claims_raw, str) and claims_raw.strip():
+            return [{"text": claims_raw.strip(), "source_doc": ""}]
+        return []
+    out = []
+    for c in claims_raw:
+        if isinstance(c, dict) and isinstance(c.get("text"), str) and c.get("text", "").strip():
+            out.append({
+                "text": (c.get("text") or "").strip(),
+                "source_doc": (c.get("source_doc") or "").strip() if isinstance(c.get("source_doc"), str) else "",
+            })
+        elif isinstance(c, str) and c.strip():
+            out.append({"text": c.strip(), "source_doc": ""})
+    return out
+
+
 def _demo_feature_flags():
+    # Visibility only — no logic. Always request full payload so backend returns
+    # answer, claims[], sources[], decision_path, confidence, refusal_reason.
+    # Toggles only control what we show in the UI; they must never alter data.
     return FeatureFlags(
         enable_query_router=True,
         enable_policy_engine=True,
         enforce_grounded_answers=True,
-        enforce_claim_to_source=st.session_state.get("ff_claim", True),
-        enable_refusal=st.session_state.get("ff_refusal", True),
-        enable_confidence=st.session_state.get("ff_confidence", True),
-        enable_audit_trail=st.session_state.get("ff_audit", True),
+        enforce_claim_to_source=True,
+        enable_refusal=True,
+        enable_confidence=True,
+        enable_audit_trail=True,
     )
 
 # Top-right: Documentation + New chat
@@ -1160,9 +1183,6 @@ if not st.session_state.messages:
         <div class="hero">
             <div class="hero-badge">Deterministic · Auditable · Zero-Hallucination</div>
             <div class="hero-title">Enterprise Compliance Intelligence</div>
-            <div class="hero-subtitle">
-                Answers include evidence, confidence, and an audit trail.
-            </div>
             <div class="hero-hints">
                 <div class="hint">
                     <div class="hint-title">How to ask good questions</div>
@@ -1191,61 +1211,86 @@ else:
                         unsafe_allow_html=True,
                     )
 
-                    # Space between answer bubble and expander
-                    st.markdown("<div style='height: 0.6rem;'></div>", unsafe_allow_html=True)
-
+                    # Single immutable response — read once; toggles only control visibility.
                     meta = message.get("metadata") or {}
-                    decision_path = meta.get("decision_path", "rag")
+                    answer_text = (message.get("content") or "").strip().lower()
+                    is_refusal = "i don't know" in answer_text or bool(meta.get("refusal_reason"))
+                    decision_path_raw = meta.get("decision_path")
                     documents = meta.get("documents", []) or []
-                    claims = meta.get("claims", []) or []
-                    sources_used = meta.get("sources_used", []) or []
-                    confidence = meta.get("confidence", 0.0)
-                    confidence_reason = meta.get("confidence_reason", "")
+                    claims = _normalize_claims_for_display(meta.get("claims") or [])
+                    confidence = meta.get("confidence")
+                    confidence_reason = meta.get("confidence_reason", "") or ""
                     refusal_reason = meta.get("refusal_reason")
 
-                    with st.expander("🔍 Audit & Evidence"):
-                        st.markdown(f"**Decision path**  \n`{decision_path}`")
+                    # ——— Visibility only: toggles NEVER alter backend requests or metadata ———
+                    # Claims toggle → show/hide claims block  |  Audit → show/hide decision path + sources
+                    # Confidence toggle → show/hide confidence  |  Refusal → show/hide refusal block
+                    # Backend payload is always full and immutable.
+                    show_audit = st.session_state.get("ff_audit", True)
+                    show_claims = st.session_state.get("ff_claim", True)
+                    show_confidence = st.session_state.get("ff_confidence", True)
+                    show_refusal = st.session_state.get("ff_refusal", True)
+                    show_expander = show_audit or show_claims or show_confidence
+                    if show_expander:
+                        st.markdown("<div style='height: 0.6rem;'></div>", unsafe_allow_html=True)
+                        with st.expander("🔍 Audit & Evidence"):
+                            # Refusal: visibility only. When refusal, show reason + decision_path (never "unknown") + confidence 0.00.
+                            if show_refusal and is_refusal:
+                                st.markdown("**Refusal**")
+                                if refusal_reason:
+                                    st.markdown(f"**Refusal reason**  \n`{refusal_reason}`")
+                                dp_show = decision_path_raw if (decision_path_raw is not None and str(decision_path_raw).strip().lower() != "unknown") else "—"
+                                st.markdown(f"**Decision path**  \n`{dp_show}`")
+                                st.markdown("**Confidence**  \n`0.00` — Refusal.")
 
-                        if refusal_reason:
-                            st.markdown(f"**Refusal reason**  \n`{refusal_reason}`")
+                            # Decision path: render exactly as returned; never "unknown". If missing/invalid → "—". (Not duplicated when Refusal shown.)
+                            if show_audit and not (show_refusal and is_refusal):
+                                if decision_path_raw is not None and str(decision_path_raw).strip().lower() != "unknown":
+                                    st.markdown(f"**Decision path**  \n`{decision_path_raw}`")
+                                elif decision_path_raw is not None:
+                                    st.markdown("**Decision path**  \n`—`")
 
-                        # Claims
-                        st.markdown("**Claims**")
-                        if isinstance(claims, list) and claims:
-                            for c in claims:
-                                if isinstance(c, dict):
-                                    st.markdown(f"- {c.get('text','').strip()}  \n  `source: {c.get('source_doc','')}`")
-                        else:
-                            st.caption("No claims (refusal or insufficient evidence).")
+                                # Sources: only from engine.documents[] — visibility only.
+                                has_docs = isinstance(documents, list) and len(documents) > 0
+                                st.markdown("**Sources**")
+                                if has_docs:
+                                    for idx, d in enumerate(documents[:6], 1):
+                                        if not isinstance(d, dict):
+                                            continue
+                                        doc_id = d.get("document_id") or d.get("source") or f"Doc {idx}"
+                                        ver = d.get("version")
+                                        url = d.get("url")
+                                        extra = f" (v{ver})" if ver else ""
+                                        line = f"- {doc_id}{extra}"
+                                        if url:
+                                            line += f"  \n  `{url}`"
+                                        st.markdown(line)
+                                else:
+                                    st.caption("No sources (refusal or no retrieval).")
 
-                        # Sources
-                        st.markdown("**Sources**")
-                        if isinstance(documents, list) and documents:
-                            # Render only sources_used (if present), else show first N docs
-                            shown = []
-                            if isinstance(sources_used, list) and sources_used:
-                                for s in sources_used:
-                                    shown.append(s)
-                            for idx, d in enumerate(documents[:6], 1):
-                                if not isinstance(d, dict):
-                                    continue
-                                doc_id = d.get("document_id") or d.get("source") or f"Doc {idx}"
-                                ver = d.get("version")
-                                url = d.get("url")
-                                extra = f" (v{ver})" if ver else ""
-                                line = f"- {doc_id}{extra}"
-                                if url:
-                                    line += f"  \n  `{url}`"
-                                st.markdown(line)
-                        else:
-                            st.caption("No sources (refusal or no retrieval).")
+                            # Claims: only from engine.claims[]; fallback only when list is genuinely empty.
+                            if show_claims:
+                                has_claims = len(claims) > 0
+                                st.markdown("**Claims**")
+                                if has_claims:
+                                    for c in claims:
+                                        src = c.get("source_doc", "") or ""
+                                        line = f"- {c.get('text', '').strip()}"
+                                        if src:
+                                            line += f"  \n  `source: {src}`"
+                                        st.markdown(line)
+                                else:
+                                    st.caption("No claims (refusal or insufficient evidence).")
 
-                        # Confidence
-                        st.markdown("**Confidence**")
-                        if confidence is not None:
-                            st.markdown(f"`{confidence:.2f}` — {confidence_reason}")
-                        else:
-                            st.markdown("— (disabled)")
+                            # Confidence: visibility only. Value + helper when Claims/Audit OFF. No separate block when Refusal (0.00 only in Refusal block).
+                            if show_confidence and not is_refusal:
+                                st.markdown("**Confidence**")
+                                if confidence is not None:
+                                    st.markdown(f"`{confidence:.2f}` — {confidence_reason}")
+                                else:
+                                    st.markdown(f"`{confidence_reason or '—'}`")
+                                if not (show_claims or show_audit):
+                                    st.caption("Enable Claims and Sources to interpret this confidence score.")
                 else:
                     content = _format_answer_with_citations(message["content"])
                     st.markdown(f'<div class="assistant-message">{content}</div>', unsafe_allow_html=True)
@@ -1290,8 +1335,10 @@ st.markdown(
         gap: 0.5rem !important;
       }}
       [data-testid^="stHorizontalBlock"]:has(.compare-mode-label) > div {{
+        position: relative !important;
         flex: 1 1 0 !important;
         min-width: 0 !important;
+        min-height: 2rem !important;
         padding: 0 0.25rem !important;
         display: flex !important;
         align-items: center !important;
@@ -1301,8 +1348,20 @@ st.markdown(
         font-size: 0.7rem !important;
         white-space: nowrap !important;
       }}
+      /* Hide compare-mode anchor so it doesn't affect layout; keep selector for row */
       [data-testid^="stHorizontalBlock"]:has(.compare-mode-label) [data-testid="stMarkdown"]:has(.compare-mode-label) {{
-        margin: 0 !important; padding: 0 !important; min-height: 0 !important; height: 0 !important; width: 0 !important; min-width: 0 !important; overflow: hidden !important; flex: 0 0 0 !important;
+        position: absolute !important;
+        left: 0 !important;
+        top: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        min-height: 0 !important;
+        height: 0 !important;
+        width: 0 !important;
+        min-width: 0 !important;
+        overflow: hidden !important;
+        flex: 0 0 0 !important;
+        pointer-events: none !important;
       }}
 
       div[data-testid="stChatInput"] {{
@@ -1383,11 +1442,7 @@ with st.container():
     with tc3:
         st.checkbox("Audit", value=True, key="ff_audit", help="Audit trail")
     with tc4:
-        st.checkbox("Confidence", value=True, key="ff_confidence", help="Confidence scoring")
-
-_any_off = not (st.session_state.get("ff_refusal", True) and st.session_state.get("ff_claim", True) and st.session_state.get("ff_audit", True) and st.session_state.get("ff_confidence", True))
-if _any_off:
-    st.warning("⚠️ Demo Mode: Safety features disabled for comparison.")
+        st.checkbox("Confidence", value=True, key="ff_confidence", help="Show confidence in audit panel")
 
 prompt = st.chat_input("Ask a grounded question (sources required)…")
 
