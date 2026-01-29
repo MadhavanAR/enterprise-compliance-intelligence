@@ -157,8 +157,10 @@ def _has_explicit_guarantee(context_docs: List[str]) -> bool:
 
 def _summarize_for_qualified(context_docs: List[str]) -> str:
     """
-    Produce a short, document-scoped summary for qualified answers.
-    Avoids raw dumps; uses concise, professional phrasing.
+    Produce a single clean sentence, document-scoped summary for qualified answers.
+    Deduplicates provider names so "AWS compliance programs Amazon Web Services (AWS)"
+    never appears; output reads like "AWS maintains compliance programs to support regulatory requirements."
+    Wording-only; no change to refusal, detection, or safety logic.
     """
     if not context_docs:
         return ""
@@ -167,9 +169,9 @@ def _summarize_for_qualified(context_docs: List[str]) -> str:
         return ""
     # Strip [Doc N] prefixes
     raw = re.sub(r"\[Doc\s+\d+\]\s*", "", raw, flags=re.IGNORECASE).strip()
-    # First sentence or first 120 chars; avoid long raw dumps
-    match = re.search(r"^[^.]{1,120}(?:\.|$)", raw)
-    excerpt = (match.group(0).strip() if match else raw[:120].strip()).strip()
+    # First sentence only, max ~100 chars for one clean sentence
+    match = re.search(r"^[^.]{1,100}(?:\.|$)", raw)
+    excerpt = (match.group(0).strip() if match else raw[:100].strip()).strip()
     if not excerpt:
         return ""
     excerpt = " ".join(excerpt.split()).lower()
@@ -182,10 +184,32 @@ def _summarize_for_qualified(context_docs: List[str]) -> str:
     ).strip()
     if not excerpt:
         return ""
-    # Minimal casing for common entities (order: longer phrases first)
+    # Deduplicate provider names: remove "Amazon Web Services (AWS)" and "Amazon Web Services"
+    # when AWS is already present, so we never get "AWS compliance programs Amazon Web Services (AWS)"
+    excerpt = re.sub(r"\bamazon\s+web\s+services\s*\(\s*aws\s*\)\b", "", excerpt, flags=re.IGNORECASE)
+    if "aws" in excerpt:
+        excerpt = re.sub(r"\bamazon\s+web\s+services\b", "", excerpt, flags=re.IGNORECASE)
+    excerpt = " ".join(excerpt.split()).strip()
+    # Remove standalone parenthetical aliases left behind: "(AWS)", "( aws )", "(Aws)", etc.
+    excerpt = re.sub(r"\(\s*aws\s*\)", "", excerpt, flags=re.IGNORECASE)
+    # Remove empty parentheses
+    excerpt = re.sub(r"\(\s*\)", "", excerpt)
+    # Collapse multiple spaces and trim
+    excerpt = " ".join(excerpt.split()).strip()
+    # Fix grammatical duplication: "AWS compliance programs maintains compliance programs" -> "AWS maintains compliance programs"
+    # Single subject + verb + object; no new facts. Preserves provider dedup.
+    excerpt = re.sub(
+        r"\baws\s+compliance\s+programs\s+(\w+)\s+compliance\s+programs\b",
+        r"aws \1 compliance programs",
+        excerpt,
+        flags=re.IGNORECASE,
+    )
+    excerpt = " ".join(excerpt.split()).strip()
+    if not excerpt:
+        return ""
+    # Single canonical casing: use "AWS" only (do not reintroduce "Amazon Web Services")
     for pat, repl in [
         (r"\baws artifact\b", "AWS Artifact"),
-        (r"\bamazon web services\b", "Amazon Web Services"),
         (r"\baws\b", "AWS"),
     ]:
         excerpt = re.sub(pat, repl, excerpt, flags=re.IGNORECASE)
@@ -242,7 +266,7 @@ def _prevent_over_assertion(
     summary = _summarize_for_qualified(context_docs)
 
     if is_binary_yes:
-        # Replace "Yes" with qualified, document-scoped statement
+        # Replace "Yes" with qualified, document-scoped statement (max 2 sentences; wording only).
         if summary:
             qualified = (
                 f"The documentation states that {summary}. "
@@ -250,8 +274,8 @@ def _prevent_over_assertion(
             )
         else:
             qualified = (
-                "The documentation describes availability or access at a high level. "
-                "It does not explicitly specify permissions, conditions, or procedural guarantees."
+                "The documentation states that the provider offers access to compliance-related resources through its programs. "
+                "It does not explicitly specify download permissions, access conditions, or procedural guarantees."
             )
         return qualified
 
