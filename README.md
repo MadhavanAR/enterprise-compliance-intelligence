@@ -86,12 +86,4 @@ rag-platform/
 └── data/                # Sample documents for ingest
 ```
 
-- **Entry:** `run_enterprise_query(question)` in `rag/engine.py` is the canonical API it returns a full payload (answer, claims, sources_used, decision_path, confidence, refusal_reason when applicable). CLI and UI call this they do not change backend logic.
-
-- **Flow:** Query -> `supervisor` (router -> research -> writing) -> grounded answer with claims/sources -> confidence -> engine normalizes and returns.
-
-- **Audit:** Same result can be passed to `explain_response()` in `rag/explain.py` for an audit-oriented view.
-
-**Config:** `config.yaml` and `.env.example`.
-
 **License:** MIT. See [LICENSE](LICENSE).
