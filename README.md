@@ -2,6 +2,8 @@
 
 Document-grounded Q&A for compliance and policy. Answers are tied to sources; unanswerable questions get a refusal. Auditable (claims, sources, decision path, confidence).
 
+**Presentation:** [From POC to Production: Reliable RAG Systems in 2026](https://from-poc-to-production-r-5go3y0y.gamma.site/)
+
 **Prerequisites:** Python 3.10+, Ollama, Qdrant. Optional: Cohere API key for reranking.
 
 **Install**
