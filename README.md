@@ -9,8 +9,8 @@ Document-grounded Q&A for compliance and policy. Answers are tied to sources; un
 **Install**
 
 ```bash
-git clone <repo-url>
-cd rag-platform
+git clone <https://github.com/MadhavanAR/ECI.git>
+cd ECI
 pip install -r requirements.txt
 cp .env.example .env   # set Qdrant URL, Ollama URL, optional Cohere key
 ```
