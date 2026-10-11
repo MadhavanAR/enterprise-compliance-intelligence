@@ -11,7 +11,7 @@ from pathlib import Path
 import requests
 from rag.config import (
     OLLAMA_URL, OLLAMA_MODEL, LLM_TEMPERATURE,
-    LLM_MAX_TOKENS, LLM_TIMEOUT
+    LLM_MAX_TOKENS, LLM_TIMEOUT, OLLAMA_HEADERS
 )
 from rag.logger import get_logger
 
@@ -150,7 +150,22 @@ def route_query(query: str, trace_id: str = None) -> Dict[str, Any]:
     logger = get_logger(trace_id)
     logger.start_timer("query_routing")
     logger.info("Starting query routing", query_preview=query[:50])
-    
+
+    # Fail-closed guardrail: empty or whitespace queries must be refused
+    if not query or not query.strip():
+        logger.info("Query Router: Empty or whitespace query detected - refusing")
+        logger.end_timer("query_routing")
+        return {
+            "intent": "unknown",
+            "use_rag": False,
+            "use_web": False,
+            "refuse": True,
+            "metadata_filters": None,
+            "confidence_requirement": "high",
+            "router_action": "REFUSE",
+            "refusal_reason": "Empty or whitespace-only query refused",
+        }
+
     # Build prompt
     prompt = QUERY_ROUTER_PROMPT.format(query=query)
     
@@ -170,6 +185,7 @@ Return ONLY valid JSON, no other text."""
         # Call Ollama for routing decision
         response = requests.post(
             OLLAMA_URL,
+            headers=OLLAMA_HEADERS,
             json={
                 "model": OLLAMA_MODEL,
                 "prompt": full_prompt,

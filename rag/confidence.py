@@ -10,7 +10,7 @@ from pathlib import Path
 import requests
 from rag.config import (
     OLLAMA_URL, OLLAMA_MODEL, LLM_TEMPERATURE,
-    LLM_MAX_TOKENS, LLM_TIMEOUT
+    LLM_MAX_TOKENS, LLM_TIMEOUT, OLLAMA_HEADERS
 )
 from rag.logger import get_logger
 
@@ -129,6 +129,7 @@ Return ONLY valid JSON, no other text."""
         # Call Ollama for confidence estimation
         response = requests.post(
             OLLAMA_URL,
+            headers=OLLAMA_HEADERS,
             json={
                 "model": OLLAMA_MODEL,
                 "prompt": prompt,

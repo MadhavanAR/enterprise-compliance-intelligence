@@ -50,7 +50,7 @@ def dopeness_editor(state: AgentState):
 
     logger.end_timer("writing", answer_length=len(answer), claims_count=len(claims), sources_count=len(sources_used), confidence=confidence)
 
-    return {
+    out = {
         "answer": answer,
         "claims": claims,
         "sources_used": sources_used,
@@ -58,6 +58,9 @@ def dopeness_editor(state: AgentState):
         "confidence_reason": confidence_reason,
         "unverified": grounded_result.get("unverified", False),
     }
+    if grounded_result.get("generation_error"):
+        out["generation_error"] = grounded_result["generation_error"]
+    return out
 
 def build_writing_graph():
     graph = StateGraph(AgentState)

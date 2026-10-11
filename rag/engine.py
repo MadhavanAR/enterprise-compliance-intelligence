@@ -125,6 +125,8 @@ def run_enterprise_query(
             payload["refusal_reason"] = refusal_reason
         if result.get("unverified"):
             payload["unverified"] = True
+        if result.get("generation_error"):
+            payload["generation_error"] = str(result["generation_error"])
 
         return payload
 

@@ -27,3 +27,6 @@ class AgentState(TypedDict, total=False):
     intent: str  # Query intent: "factual" | "analytical" | "opinion" | "unknown"
     confidence_requirement: str  # "high" | "medium" | "low"
     feature_flags: Optional[Any]  # DEMO-ONLY: Compare Mode toggles (canonical: engine only)
+    # LangGraph drops undeclared keys, so flags set by nodes must be declared here.
+    unverified: bool
+    generation_error: Optional[str]  # e.g. "llm_unavailable" when the LLM call itself failed

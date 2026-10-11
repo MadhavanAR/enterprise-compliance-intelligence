@@ -17,6 +17,7 @@ from rag.config import (
     LLM_MAX_TOKENS,
     LLM_TEMPERATURE,
     LLM_TIMEOUT,
+    OLLAMA_HEADERS,
     OLLAMA_MODEL,
     OLLAMA_URL,
 )
@@ -347,6 +348,7 @@ Return ONLY valid JSON, no other text.
 
         resp = requests.post(
             OLLAMA_URL,
+            headers=OLLAMA_HEADERS,
             json={
                 "model": OLLAMA_MODEL,
                 "prompt": full_prompt,
@@ -469,6 +471,10 @@ Return ONLY valid JSON, no other text.
         logger.info("Grounded answer generated successfully")
         return result
 
+    except requests.RequestException as e:
+        # Still fail closed, but flag it so callers can tell an LLM outage from an evidence-based refusal.
+        logger.error("Grounded answer generation failed: LLM unreachable", error_type=type(e).__name__)
+        return {"answer": "I don't know.", "claims": [], "sources_used": [], "generation_error": "llm_unavailable"}
     except Exception as e:
         logger.error("Grounded answer generation failed", error=str(e))
         return {"answer": "I don't know.", "claims": [], "sources_used": []}

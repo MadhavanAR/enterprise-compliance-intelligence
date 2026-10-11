@@ -109,7 +109,11 @@ def supervisor_node_phase3(state: AgentState):
 
     # HARD REFUSAL: If router OR policy says refuse, return immediately (skip if refusal disabled for demo)
     if ff.enable_refusal and (refuse or not policy_allowed or policy_refuse):
-        refusal_reason = policy_reason or "Query refused: opinion/speculation detected by router"
+        refusal_reason = (
+            policy_reason
+            or routing_decision.get("refusal_reason")
+            or "Query refused: opinion/speculation detected by router"
+        )
         logger.warning("Query refused", reason=refusal_reason, policy_violations=policy_violations)
         
         decision_path.append("refuse")

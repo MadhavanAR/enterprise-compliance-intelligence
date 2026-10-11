@@ -101,7 +101,7 @@ def research_node(state: AgentState) -> dict:
         logger.end_timer("rag_retrieval", docs_retrieved=len(notes))
         
         # Log if metadata filter resulted in zero docs
-        if metadata_filters and len(docs) == 0:
+        if metadata_filters and len(retrieved) == 0:
             logger.warning(f"Metadata filter returned zero documents - will trigger hard refusal: {metadata_filters}")
     
     logger.end_timer("research", notes_count=len(notes), tool_calls_count=len(tool_calls))

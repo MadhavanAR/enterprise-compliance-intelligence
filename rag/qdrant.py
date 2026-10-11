@@ -15,7 +15,7 @@ from typing import Optional
 
 from qdrant_client import QdrantClient
 
-from rag.config import QDRANT_URL
+from rag.config import QDRANT_API_KEY, QDRANT_URL
 
 _CLIENT: Optional[QdrantClient] = None
 
@@ -34,7 +34,7 @@ def get_qdrant_client() -> QdrantClient:
 
     url = str(QDRANT_URL)
     if url.startswith(("http://", "https://")):
-        _CLIENT = QdrantClient(url=url)
+        _CLIENT = QdrantClient(url=url, api_key=QDRANT_API_KEY, timeout=10)
     else:
         _CLIENT = QdrantClient(path=url)
     return _CLIENT

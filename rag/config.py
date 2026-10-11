@@ -70,6 +70,10 @@ COLLECTION_NAME = os.getenv("COLLECTION_NAME", _get_config("qdrant.collection_na
 
 # API Keys (from environment only, never in config.yaml)
 COHERE_API_KEY = os.getenv("COHERE_API_KEY")
+QDRANT_API_KEY = os.getenv("QDRANT_API_KEY") or None
+OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY") or None
+# Sent with every Ollama request; empty for an unauthenticated local Ollama.
+OLLAMA_HEADERS = {"Authorization": f"Bearer {OLLAMA_API_KEY}"} if OLLAMA_API_KEY else {}
 
 # Evaluation Gates
 EVAL_FAITHFULNESS_MIN = float(os.getenv("EVAL_FAITHFULNESS_MIN", _get_config("evaluation.gates.faithfulness.min", 0.8)))
